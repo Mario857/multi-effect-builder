@@ -1,6 +1,6 @@
 'use client';
 
-import { Guitar, Mic, Volume2, Activity } from 'lucide-react';
+import { Guitar, Mic, Activity } from 'lucide-react';
 import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
 import { Toggle } from '@/components/shared/Toggle';
 import { Knob } from '@/components/shared/Knob';
