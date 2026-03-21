@@ -6,7 +6,6 @@ import { EFFECT_TYPE } from '@/types/audio';
 const PARAM_RAMP_TIME = 0.02;
 
 interface AmpCharacter {
-  readonly preampBoost: number;
   readonly postTrim: number;
   readonly bassFreq: number;
   readonly midFreq: number;
@@ -16,7 +15,7 @@ interface AmpCharacter {
   readonly inputHighCut: number;
   // Post-clipping smoothing — simulates coupling capacitor bandwidth between stages
   readonly smoothingCutoff: number;
-  // Cabinet speaker simulation — filter chain instead of convolution
+  // Cabinet speaker simulation — filter chain
   readonly cabCutoff: number;
   readonly cabCutoffQ: number;
   readonly cabBodyFreq: number;
@@ -26,7 +25,6 @@ interface AmpCharacter {
 
 const AMP_CHARACTERS: Record<string, AmpCharacter> = {
   [EFFECT_TYPE.AMP_CLEAN]: {
-    preampBoost: 8,
     postTrim: 0.85,
     bassFreq: 150,
     midFreq: 800,
@@ -43,7 +41,6 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
     cabBodyQ: 0.8,
   },
   [EFFECT_TYPE.AMP_CRUNCH]: {
-    preampBoost: 6,
     postTrim: 0.7,
     bassFreq: 200,
     midFreq: 1000,
@@ -60,7 +57,6 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
     cabBodyQ: 1.0,
   },
   [EFFECT_TYPE.AMP_HIGHGAIN]: {
-    preampBoost: 8,
     postTrim: 0.5,
     bassFreq: 100,
     midFreq: 700,
@@ -78,7 +74,6 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
     cabBodyQ: 1.2,
   },
   [EFFECT_TYPE.AMP_ACOUSTIC]: {
-    preampBoost: 8,
     postTrim: 0.9,
     bassFreq: 200,
     midFreq: 1200,
@@ -111,7 +106,6 @@ export class AmpSimulatorEffect extends EffectNode {
   private cabBody: BiquadFilterNode;
   private masterGain: GainNode;
   private character: AmpCharacter;
-  private currentGain: number;
 
   /**
    * Use AmpSimulatorEffect.create() instead — the worklet module must be
@@ -121,7 +115,6 @@ export class AmpSimulatorEffect extends EffectNode {
     super(context);
 
     this.character = AMP_CHARACTERS[ampType] || AMP_CHARACTERS[EFFECT_TYPE.AMP_CLEAN];
-    this.currentGain = 0.5;
     this.tubePreamp = tubePreamp;
 
     // Input filtering — tight bandpass before any amplification
@@ -135,8 +128,7 @@ export class AmpSimulatorEffect extends EffectNode {
     this.inputHighCut.frequency.value = this.character.inputHighCut;
     this.inputHighCut.Q.value = 0.7;
 
-    // Post-clipping smoothing — simulates coupling capacitor between tube stages.
-    // Rounds off harsh waveshaper harmonics before they hit the tone stack.
+    // Post-clipping smoothing — simulates coupling capacitor between tube stages
     this.smoothingFilter = context.createBiquadFilter();
     this.smoothingFilter.type = 'lowpass';
     this.smoothingFilter.frequency.value = this.character.smoothingCutoff;
@@ -214,7 +206,8 @@ export class AmpSimulatorEffect extends EffectNode {
   }
 
   /**
-   * Async factory — creates the AudioWorkletNode then wires the signal chain.
+   * Factory — creates the AudioWorkletNode then wires the signal chain.
+   * Worklet module must already be registered via AudioEngine.start().
    */
   static create(context: AudioContext, ampType: EffectType): AmpSimulatorEffect {
     const tubePreamp = TubePreampNode.create(context, ampType);
@@ -225,7 +218,6 @@ export class AmpSimulatorEffect extends EffectNode {
     const now = this.context.currentTime;
     switch (id) {
       case 'gain':
-        this.currentGain = value;
         this.tubePreamp.setGain(value, now);
         break;
       case 'bass':
