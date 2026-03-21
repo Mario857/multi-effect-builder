@@ -3,9 +3,13 @@ import { EffectNode } from '@/lib/audio/effectNode';
 const PARAM_RAMP_TIME = 0.02;
 const IR_SAMPLE_RATE = 44100;
 
+// Early reflection delays (in seconds) — simulates discrete wall bounces
+const EARLY_REFLECTION_TAPS = [0.011, 0.019, 0.027, 0.037, 0.048, 0.063] as const;
+const EARLY_REFLECTION_GAINS = [0.85, 0.72, 0.60, 0.48, 0.38, 0.28] as const;
+
 /**
- * Generates an impulse response buffer for convolution reverb.
- * Uses exponential decay with high-frequency damping.
+ * Generates an impulse response with early reflections and diffuse tail.
+ * Early reflections create spatial depth; the tail adds lushness.
  */
 function generateImpulseResponse(
   context: AudioContext,
@@ -19,16 +23,34 @@ function generateImpulseResponse(
   const channelL = buffer.getChannelData(0);
   const channelR = buffer.getChannelData(1);
 
-  for (let i = 0; i < length; i++) {
-    const t = i / sampleRate;
-    const envelope = Math.exp(-t * (3 / decay));
-    // High-frequency damping: faster decay for higher frequencies via noise shaping
-    const dampingFactor = 1 - damping * (t / decay);
-    const amplitude = envelope * Math.max(0, dampingFactor);
-    // Size affects early vs late reflection density
-    const sizeScale = 0.5 + size * 0.5;
-    channelL[i] = (Math.random() * 2 - 1) * amplitude * sizeScale;
-    channelR[i] = (Math.random() * 2 - 1) * amplitude * sizeScale;
+  // Phase 1: Early reflections — discrete taps for spatial depth
+  const sizeScale = 0.5 + size * 1.5;
+  for (let tapIndex = 0; tapIndex < EARLY_REFLECTION_TAPS.length; tapIndex++) {
+    const tapTime = EARLY_REFLECTION_TAPS[tapIndex] * sizeScale;
+    const tapGain = EARLY_REFLECTION_GAINS[tapIndex];
+    const tapSample = Math.floor(tapTime * sampleRate);
+
+    if (tapSample < length) {
+      // Slightly different L/R timing for stereo width
+      const offsetL = tapSample;
+      const offsetR = Math.min(tapSample + Math.floor(sampleRate * 0.002), length - 1);
+      channelL[offsetL] += tapGain;
+      channelR[offsetR] += tapGain * 0.95;
+    }
+  }
+
+  // Phase 2: Diffuse tail — builds after early reflections
+  const tailStart = Math.floor(sampleRate * 0.07 * sizeScale);
+  for (let i = tailStart; i < length; i++) {
+    const t = (i - tailStart) / sampleRate;
+    const tailLength = decay - (tailStart / sampleRate);
+    // Smooth exponential decay
+    const envelope = Math.exp(-t * (4 / tailLength));
+    // High-frequency damping — higher frequencies decay faster
+    const dampingFactor = Math.exp(-t * damping * 6);
+    const amplitude = envelope * dampingFactor * 0.4;
+    channelL[i] += (Math.random() * 2 - 1) * amplitude;
+    channelR[i] += (Math.random() * 2 - 1) * amplitude;
   }
 
   return buffer;

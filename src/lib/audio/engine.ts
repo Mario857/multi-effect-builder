@@ -50,8 +50,17 @@ export class AudioEngine {
     if (this._isRunning) return;
 
     this.context = new AudioContext({ latencyHint: 'interactive' });
+
+    // Force mono input — Focusrite and other interfaces present as stereo
+    // but guitar is on one channel only; downmix prevents one-sided output
     this.inputGainNode = this.context.createGain();
+    this.inputGainNode.channelCount = 1;
+    this.inputGainNode.channelCountMode = 'explicit';
+
+    // Force stereo output — upmix mono chain to both speakers equally
     this.masterGainNode = this.context.createGain();
+    this.masterGainNode.channelCount = 2;
+    this.masterGainNode.channelCountMode = 'explicit';
 
     this.inputAnalyser = this.context.createAnalyser();
     this.inputAnalyser.fftSize = FFT_SIZE;

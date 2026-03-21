@@ -15,8 +15,8 @@ export function AmpSelector() {
   return (
     <div
       className={mergeClassNames(
-        'flex flex-col gap-3 rounded-xl border-2 border-fx-amp/50 p-4',
-        'bg-bg-surface',
+        'flex flex-col gap-3 rounded-xl border border-fx-amp/20 p-4',
+        'glass-card card-highlight',
       )}
     >
       <div className="flex items-center justify-between">

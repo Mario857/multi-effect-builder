@@ -17,7 +17,7 @@ export function Tuner({ reading }: Props) {
 
   const noSignalContent = (
     <div className="flex flex-col items-center gap-2 py-4">
-      <span className="text-3xl font-bold text-text-muted">--</span>
+      <span className="font-pixel text-xl text-text-muted">--</span>
       <span className="text-xs text-text-muted">Play a note</span>
     </div>
   );
@@ -27,7 +27,7 @@ export function Tuner({ reading }: Props) {
       <div className="flex items-baseline gap-1">
         <span
           className={mergeClassNames(
-            'text-4xl font-bold',
+            'font-pixel text-2xl',
             isInTune ? 'text-status-success' : 'text-text-primary',
           )}
         >
@@ -79,8 +79,8 @@ export function Tuner({ reading }: Props) {
   return (
     <div
       className={mergeClassNames(
-        'rounded-xl border border-border-default p-4',
-        'bg-bg-surface text-center',
+        'rounded-xl p-4',
+        'glass-card card-highlight text-center',
       )}
     >
       <span className="text-xs font-bold uppercase tracking-wider text-text-muted">

@@ -34,6 +34,7 @@ export const CATEGORY_LABELS: Record<EffectCategory, string> = {
   [EFFECT_CATEGORY.UTILITY]: 'Utility',
 };
 
+export const KNOB_SIZE_XS = 28;
 export const KNOB_SIZE_SM = 40;
 export const KNOB_SIZE_MD = 56;
 export const KNOB_SIZE_LG = 72;

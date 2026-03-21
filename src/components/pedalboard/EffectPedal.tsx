@@ -37,9 +37,9 @@ export function EffectPedal({
   const parameterValues = new Map(effect.parameters.map((p) => [p.id, p.value]));
 
   const ledIndicator = effect.isBypassed ? (
-    <span className="h-2.5 w-2.5 rounded-full bg-text-muted/30" />
+    <span className="h-2.5 w-2.5 rounded-full bg-text-muted/20 border border-text-muted/10" />
   ) : (
-    <span className="h-2.5 w-2.5 rounded-full bg-status-success shadow-(--shadow-glow-amber)" />
+    <span className="h-2.5 w-2.5 rounded-full bg-status-success led-active" />
   );
 
   return (
@@ -50,14 +50,17 @@ export function EffectPedal({
       onKeyDown={(e) => { if (e.key === 'Enter') onSelect(); }}
       aria-label={`${definition.name} effect pedal`}
       className={mergeClassNames(
-        'relative flex flex-col items-center gap-3',
-        'w-44 rounded-xl border-2 p-3',
-        'transition-all duration-150 ease-out',
+        'relative flex shrink-0 flex-col items-center gap-3',
+        'w-52 rounded-xl border p-3',
+        'bg-gradient-to-b from-bg-elevated/80 to-bg-surface/80',
+        'backdrop-blur-sm',
+        'transition-all duration-200 ease-out',
         'cursor-pointer select-none',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary',
+        'hover:scale-[1.02]',
         categoryBg,
-        isSelected ? `${categoryColor} shadow-(--shadow-pedal)` : 'border-border-default',
-        effect.isBypassed && 'opacity-60',
+        isSelected ? `${categoryColor} shadow-(--shadow-pedal)` : 'border-glass-border card-highlight',
+        effect.isBypassed && 'opacity-50 grayscale-[30%]',
       )}
     >
       <div className="absolute right-1.5 top-1.5">
@@ -70,9 +73,9 @@ export function EffectPedal({
         </IconButton>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex max-w-full items-center gap-2 pr-5">
         {ledIndicator}
-        <span className={mergeClassNames('text-xs font-bold uppercase tracking-wider', categoryColor)}>
+        <span className={mergeClassNames('truncate text-xs font-bold uppercase tracking-wider', categoryColor)}>
           {definition.name}
         </span>
       </div>

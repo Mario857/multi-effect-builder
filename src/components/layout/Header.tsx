@@ -3,8 +3,6 @@
 import { Guitar, Mic, Activity } from 'lucide-react';
 import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
 import { Toggle } from '@/components/shared/Toggle';
-import { Knob } from '@/components/shared/Knob';
-import { VuMeter } from '@/components/shared/VuMeter';
 import { IconButton } from '@/components/shared/IconButton';
 import { useAudioStore } from '@/lib/store/audioStore';
 import { useAudioInput } from '@/hooks/useAudioInput';
@@ -17,12 +15,8 @@ interface Props {
 export function Header({ onStartEngine, isEngineRunning }: Props) {
   const {
     isMonitoring,
-    masterVolume,
-    inputLevel,
-    outputLevel,
     isTunerActive,
     setMonitoring,
-    setMasterVolume,
     setTunerActive,
   } = useAudioStore();
 
@@ -40,9 +34,10 @@ export function Header({ onStartEngine, isEngineRunning }: Props) {
       className={mergeClassNames(
         'flex items-center gap-1.5',
         'rounded-lg px-3 py-1.5',
-        'bg-accent-primary text-text-inverse text-xs font-medium',
+        'bg-gradient-to-r from-accent-primary to-accent-primary-hover',
+        'text-text-inverse text-xs font-medium',
         'transition-all duration-150 ease-out',
-        'hover:bg-accent-primary-hover',
+        'hover:brightness-110 hover:shadow-(--shadow-glow-amber)',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary',
       )}
     >
@@ -56,12 +51,13 @@ export function Header({ onStartEngine, isEngineRunning }: Props) {
       className={mergeClassNames(
         'flex items-center justify-between gap-4',
         'h-14 px-4',
-        'border-b border-border-subtle bg-bg-secondary',
+        'border-b border-border-subtle bg-bg-secondary/80 backdrop-blur-md',
+        'header-glow',
       )}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-3">
         <Guitar className="h-5 w-5 text-accent-primary" />
-        <span className="text-sm font-bold tracking-tight">MultiEffect</span>
+        <span className="font-pixel text-xs tracking-tight text-accent-primary">MultiFX</span>
         {engineButton}
       </div>
 
@@ -93,37 +89,6 @@ export function Header({ onStartEngine, isEngineRunning }: Props) {
             checked={isMonitoring}
             onCheckedChange={setMonitoring}
             aria-label="Toggle audio monitoring"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <VuMeter
-            level={inputLevel * 5}
-            width={8}
-            height={28}
-            aria-label="Input level meter"
-          />
-          <span className="text-xs text-text-muted">IN</span>
-        </div>
-
-        <Knob
-          value={masterVolume}
-          min={0}
-          max={1}
-          step={0.01}
-          onChange={setMasterVolume}
-          label="Master"
-          size="sm"
-          showValue={false}
-        />
-
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-text-muted">OUT</span>
-          <VuMeter
-            level={outputLevel * 5}
-            width={8}
-            height={28}
-            aria-label="Output level meter"
           />
         </div>
 

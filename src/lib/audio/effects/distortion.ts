@@ -1,5 +1,6 @@
 import { EffectNode } from '@/lib/audio/effectNode';
 import { createAudioCurve, setWaveShaperCurve } from '@/lib/audio/curveUtils';
+import { createDCBlockFilter } from '@/lib/audio/filterUtils';
 
 const CURVE_SAMPLES = 44100;
 const SOFT_CLIP_AMOUNT = 0.7;
@@ -42,7 +43,9 @@ function createTubeClipCurve(drive: number) {
 }
 
 export class DistortionEffect extends EffectNode {
+  private inputBoost: GainNode;
   private waveShaperNode: WaveShaperNode;
+  private dcBlockFilter: BiquadFilterNode;
   private toneFilter: BiquadFilterNode;
   private driveGain: GainNode;
   private drive: number;
@@ -51,9 +54,17 @@ export class DistortionEffect extends EffectNode {
     super(context);
 
     this.drive = 0.5;
+
+    // Input boost to push the signal into the waveshaper
+    this.inputBoost = context.createGain();
+    this.inputBoost.gain.value = this.drive * 20 + 1;
+
     this.waveShaperNode = context.createWaveShaper();
     this.waveShaperNode.oversample = '4x';
     setWaveShaperCurve(this.waveShaperNode, () => createTubeClipCurve(this.drive));
+
+    // DC blocking after waveshaper prevents offset buildup
+    this.dcBlockFilter = createDCBlockFilter(context);
 
     this.toneFilter = context.createBiquadFilter();
     this.toneFilter.type = 'lowpass';
@@ -63,9 +74,11 @@ export class DistortionEffect extends EffectNode {
     this.driveGain = context.createGain();
     this.driveGain.gain.value = 0.7;
 
-    // Wet path: input → waveshaper → tone filter → drive gain → wet
-    this.inputNode.connect(this.waveShaperNode);
-    this.waveShaperNode.connect(this.toneFilter);
+    // Wet path: input → boost → waveshaper → dcBlock → tone filter → drive gain → wet
+    this.inputNode.connect(this.inputBoost);
+    this.inputBoost.connect(this.waveShaperNode);
+    this.waveShaperNode.connect(this.dcBlockFilter);
+    this.dcBlockFilter.connect(this.toneFilter);
     this.toneFilter.connect(this.driveGain);
     this.driveGain.connect(this.wetNode);
   }
@@ -76,6 +89,7 @@ export class DistortionEffect extends EffectNode {
     switch (id) {
       case 'drive':
         this.drive = value;
+        this.inputBoost.gain.linearRampToValueAtTime(value * 20 + 1, now + rampTime);
         setWaveShaperCurve(this.waveShaperNode, () => createTubeClipCurve(value));
         break;
       case 'tone':
@@ -92,7 +106,9 @@ export class DistortionEffect extends EffectNode {
   }
 
   dispose(): void {
+    this.inputBoost.disconnect();
     this.waveShaperNode.disconnect();
+    this.dcBlockFilter.disconnect();
     this.toneFilter.disconnect();
     this.driveGain.disconnect();
     this.disposeBase();

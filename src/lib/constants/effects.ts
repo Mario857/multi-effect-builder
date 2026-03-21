@@ -107,6 +107,18 @@ export const PHASER_DEFINITION: EffectDefinition = {
   ],
 };
 
+export const FUZZ_DEFINITION: EffectDefinition = {
+  type: EFFECT_TYPE.FUZZ,
+  name: 'Fuzz',
+  category: EFFECT_CATEGORY.DISTORTION,
+  description: 'Big Muff-style fuzz with massive sustain and mid-scoop',
+  parameters: [
+    { id: 'fuzz', name: 'Fuzz', min: 0, max: 1, step: 0.01, defaultValue: 0.7, unit: '' },
+    { id: 'tone', name: 'Tone', min: 0, max: 1, step: 0.01, defaultValue: 0.5, unit: '' },
+    { id: 'level', name: 'Level', min: 0, max: 1, step: 0.01, defaultValue: 0.5, unit: '' },
+  ],
+};
+
 export const NOISE_GATE_DEFINITION: EffectDefinition = {
   type: EFFECT_TYPE.NOISE_GATE,
   name: 'Noise Gate',
@@ -169,6 +181,7 @@ export const EFFECT_DEFINITIONS: Record<string, EffectDefinition> = {
   [EFFECT_TYPE.EQ]: EQ_DEFINITION,
   [EFFECT_TYPE.TREMOLO]: TREMOLO_DEFINITION,
   [EFFECT_TYPE.PHASER]: PHASER_DEFINITION,
+  [EFFECT_TYPE.FUZZ]: FUZZ_DEFINITION,
   [EFFECT_TYPE.NOISE_GATE]: NOISE_GATE_DEFINITION,
   [EFFECT_TYPE.AMP_CLEAN]: AMP_CLEAN_DEFINITION,
   [EFFECT_TYPE.AMP_CRUNCH]: AMP_CRUNCH_DEFINITION,
@@ -185,6 +198,7 @@ export const PEDAL_EFFECT_TYPES = [
   EFFECT_TYPE.EQ,
   EFFECT_TYPE.TREMOLO,
   EFFECT_TYPE.PHASER,
+  EFFECT_TYPE.FUZZ,
   EFFECT_TYPE.NOISE_GATE,
 ] as const;
 

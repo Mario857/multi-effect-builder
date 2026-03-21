@@ -10,6 +10,7 @@ import { CompressorEffect } from '@/lib/audio/effects/compressor';
 import { EqualizerEffect } from '@/lib/audio/effects/equalizer';
 import { TremoloEffect } from '@/lib/audio/effects/tremolo';
 import { PhaserEffect } from '@/lib/audio/effects/phaser';
+import { FuzzEffect } from '@/lib/audio/effects/fuzz';
 import { NoiseGateEffect } from '@/lib/audio/effects/noiseGate';
 import { AmpSimulatorEffect } from '@/lib/audio/effects/ampSimulator';
 
@@ -24,6 +25,7 @@ const EFFECT_REGISTRY: Record<string, EffectConstructor> = {
   [EFFECT_TYPE.EQ]: EqualizerEffect,
   [EFFECT_TYPE.TREMOLO]: TremoloEffect,
   [EFFECT_TYPE.PHASER]: PhaserEffect,
+  [EFFECT_TYPE.FUZZ]: FuzzEffect,
   [EFFECT_TYPE.NOISE_GATE]: NoiseGateEffect,
 };
 

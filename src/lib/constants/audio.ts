@@ -40,6 +40,13 @@ export const GUITAR_STANDARD_TUNING = [
   { note: 'E', octave: 4, frequency: 329.63 },
 ] as const;
 
+// DC blocking highpass filter cutoff — removes DC offset from waveshaper stages
+export const DC_BLOCK_FREQUENCY = 20;
+
+// Guitar input bandpass — cuts noise outside useful guitar range
+export const GUITAR_LOWCUT_FREQUENCY = 70;
+export const GUITAR_HIGHCUT_FREQUENCY = 7000;
+
 export const AUDIO_CONSTRAINTS: MediaStreamConstraints = {
   audio: {
     echoCancellation: false,

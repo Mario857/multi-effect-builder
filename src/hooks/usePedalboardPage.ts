@@ -9,7 +9,7 @@ import { useAudioStore } from '@/lib/store/audioStore';
 export function usePedalboardPage() {
   const [isEffectRackOpen, setIsEffectRackOpen] = useState(false);
 
-  const { isEngineRunning, startEngine, engine } = useAudioEngine();
+  const { isEngineRunning, startEngine, connectInput, engine } = useAudioEngine();
   const { enumerateDevices } = useAudioInput();
   const { isTunerActive } = useAudioStore();
 
@@ -18,8 +18,10 @@ export function usePedalboardPage() {
 
   const handleStartEngine = useCallback(async () => {
     await startEngine();
+    // getUserMedia must be called before enumerating so browsers expose device labels
+    await connectInput();
     await enumerateDevices();
-  }, [startEngine, enumerateDevices]);
+  }, [startEngine, connectInput, enumerateDevices]);
 
   const openEffectRack = useCallback(() => {
     setIsEffectRackOpen(true);

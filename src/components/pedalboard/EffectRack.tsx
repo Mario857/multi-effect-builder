@@ -46,8 +46,8 @@ export function EffectRack({ isOpen, onClose }: Props) {
       className={mergeClassNames(
         'fixed inset-y-0 right-0 z-50 w-80',
         'flex flex-col',
-        'border-l border-border-subtle bg-bg-secondary',
-        'shadow-xl',
+        'border-l border-glass-border bg-bg-secondary/90 backdrop-blur-xl',
+        'shadow-2xl',
       )}
     >
       <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
@@ -108,11 +108,11 @@ export function EffectRack({ isOpen, onClose }: Props) {
             >
               <div
                 className={mergeClassNames(
-                  'flex h-8 w-8 items-center justify-center rounded-lg',
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                   CATEGORY_BG_COLORS[def.category],
                 )}
               >
-                <Plus className={mergeClassNames('h-4 w-4', CATEGORY_COLORS[def.category])} />
+                <Plus className={mergeClassNames('h-4 w-4 shrink-0', CATEGORY_COLORS[def.category])} />
               </div>
               <div className="flex flex-col">
                 <span className="text-sm font-medium text-text-primary">{def.name}</span>

@@ -1,6 +1,7 @@
 'use client';
 
 import { Header } from '@/components/layout/Header';
+import { MeterStrip } from '@/components/audio/MeterStrip';
 import { AmpSelector } from '@/components/pedalboard/AmpSelector';
 import { PedalBoard } from '@/components/pedalboard/PedalBoard';
 import { EffectRack } from '@/components/pedalboard/EffectRack';
@@ -29,14 +30,16 @@ export default function HomePage() {
         isEngineRunning={isEngineRunning}
       />
 
+      {isEngineRunning && <MeterStrip />}
+
       <main className="flex flex-1 flex-col gap-4 p-4">
         {tunerSection}
 
         <AmpSelector />
 
         <div className="flex flex-col gap-4">
-          <div className="rounded-xl border border-border-default bg-bg-surface">
-            <div className="border-b border-border-subtle px-4 py-2">
+          <div className="glass-card card-highlight rounded-xl pedalboard-surface">
+            <div className="border-b border-glass-border px-4 py-2">
               <span className="text-xs font-bold uppercase tracking-wider text-text-muted">
                 Signal Chain
               </span>

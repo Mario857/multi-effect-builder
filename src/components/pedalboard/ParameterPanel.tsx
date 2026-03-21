@@ -76,8 +76,8 @@ export function ParameterPanel() {
   return (
     <div
       className={mergeClassNames(
-        'rounded-xl border border-border-default p-4',
-        'bg-bg-surface',
+        'rounded-xl p-4',
+        'glass-card card-highlight',
       )}
     >
       <div className="mb-4 flex items-center justify-between">

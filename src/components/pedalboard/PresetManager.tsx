@@ -103,8 +103,8 @@ export function PresetManager() {
   return (
     <div
       className={mergeClassNames(
-        'flex flex-col gap-3 rounded-xl border border-border-default p-4',
-        'bg-bg-surface',
+        'flex flex-col gap-3 rounded-xl p-4',
+        'glass-card card-highlight',
       )}
     >
       <div className="flex items-center justify-between">

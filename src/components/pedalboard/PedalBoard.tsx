@@ -52,8 +52,8 @@ export function PedalBoard({ onOpenEffectRack }: Props) {
       onClick={onOpenEffectRack}
       aria-label="Add effect to chain"
       className={mergeClassNames(
-        'flex flex-col items-center justify-center gap-2',
-        'h-40 w-44 rounded-xl',
+        'flex shrink-0 flex-col items-center justify-center gap-2',
+        'h-40 w-52 rounded-xl',
         'border-2 border-dashed border-border-default',
         'text-text-muted',
         'transition-all duration-150 ease-out',
@@ -67,7 +67,7 @@ export function PedalBoard({ onOpenEffectRack }: Props) {
   );
 
   const emptyState = (
-    <div className="flex flex-col items-center gap-3 py-8 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
       <p className="text-sm text-text-muted">No effects in the chain.</p>
       <p className="text-xs text-text-muted">Click &quot;Add Effect&quot; to get started.</p>
     </div>
@@ -101,7 +101,7 @@ export function PedalBoard({ onOpenEffectRack }: Props) {
   return (
     <div
       className={mergeClassNames(
-        'flex items-start gap-3 overflow-x-auto p-4',
+        'flex min-h-48 items-center gap-3 overflow-x-auto p-4',
         'scrollbar-thin',
       )}
     >

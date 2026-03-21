@@ -5,12 +5,14 @@ import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
 import {
   KNOB_ROTATION_RANGE,
   KNOB_ROTATION_OFFSET,
+  KNOB_SIZE_XS,
   KNOB_SIZE_SM,
   KNOB_SIZE_MD,
   KNOB_SIZE_LG,
 } from '@/lib/constants/ui';
 
 const SIZE_MAP = {
+  xs: KNOB_SIZE_XS,
   sm: KNOB_SIZE_SM,
   md: KNOB_SIZE_MD,
   lg: KNOB_SIZE_LG,
@@ -102,49 +104,100 @@ export function Knob({
   const indicatorLength = pixelSize * 0.3;
   const indicatorOffset = pixelSize * 0.1;
 
+  // SVG arc track
+  const svgSize = pixelSize + 12;
+  const arcRadius = pixelSize / 2 + 4;
+  const arcCenter = svgSize / 2;
+  const normalized = (value - min) / (max - min);
+  const startAngle = (KNOB_ROTATION_OFFSET - 90) * (Math.PI / 180);
+  const endAngleFull = ((KNOB_ROTATION_OFFSET + KNOB_ROTATION_RANGE) - 90) * (Math.PI / 180);
+  const endAngleValue = (KNOB_ROTATION_OFFSET + normalized * KNOB_ROTATION_RANGE - 90) * (Math.PI / 180);
+
+  const arcPath = (endAngle: number) => {
+    const x1 = arcCenter + arcRadius * Math.cos(startAngle);
+    const y1 = arcCenter + arcRadius * Math.sin(startAngle);
+    const x2 = arcCenter + arcRadius * Math.cos(endAngle);
+    const y2 = arcCenter + arcRadius * Math.sin(endAngle);
+    const angleDiff = endAngle - startAngle;
+    const largeArc = angleDiff > Math.PI ? 1 : 0;
+    return `M ${x1} ${y1} A ${arcRadius} ${arcRadius} 0 ${largeArc} 1 ${x2} ${y2}`;
+  };
+
   return (
     <div className={mergeClassNames('flex flex-col items-center gap-1', className)}>
-      <div
-        role="slider"
-        tabIndex={0}
-        aria-label={label}
-        aria-valuemin={min}
-        aria-valuemax={max}
-        aria-valuenow={value}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onDoubleClick={handleDoubleClick}
-        className={mergeClassNames(
-          'relative cursor-grab rounded-full',
-          'bg-bg-elevated border-2 border-border-strong',
-          'transition-shadow duration-150 ease-out',
-          'hover:border-accent-primary hover:shadow-(--shadow-knob)',
-          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary',
-          'active:cursor-grabbing',
-        )}
-        style={{ width: pixelSize, height: pixelSize }}
-      >
-        <div
+      <div className="relative" style={{ width: svgSize, height: svgSize }}>
+        <svg
           className="absolute inset-0"
-          style={{ transform: `rotate(${rotation}deg)` }}
+          width={svgSize}
+          height={svgSize}
+          aria-hidden="true"
+        >
+          <path
+            d={arcPath(endAngleFull)}
+            fill="none"
+            stroke="rgba(255,255,255,0.06)"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+          />
+          <path
+            d={arcPath(endAngleValue)}
+            fill="none"
+            stroke="var(--color-accent-primary)"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            style={{ filter: 'drop-shadow(0 0 3px rgba(245, 158, 11, 0.4))' }}
+          />
+        </svg>
+        <div
+          role="slider"
+          tabIndex={0}
+          aria-label={label}
+          aria-valuemin={min}
+          aria-valuemax={max}
+          aria-valuenow={value}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onDoubleClick={handleDoubleClick}
+          className={mergeClassNames(
+            'absolute cursor-grab rounded-full',
+            'bg-gradient-to-b from-bg-hover to-bg-elevated',
+            'border border-border-strong',
+            'shadow-(--shadow-knob)',
+            'transition-shadow duration-150 ease-out',
+            'hover:border-accent-primary/50',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary',
+            'active:cursor-grabbing',
+          )}
+          style={{
+            width: pixelSize,
+            height: pixelSize,
+            left: (svgSize - pixelSize) / 2,
+            top: (svgSize - pixelSize) / 2,
+          }}
         >
           <div
-            className="absolute left-1/2 -translate-x-1/2 rounded-full bg-accent-primary"
-            style={{
-              width: 3,
-              height: indicatorLength,
-              top: indicatorOffset,
-            }}
-          />
+            className="absolute inset-0"
+            style={{ transform: `rotate(${rotation}deg)` }}
+          >
+            <div
+              className="absolute left-1/2 -translate-x-1/2 rounded-full bg-accent-primary"
+              style={{
+                width: 3,
+                height: indicatorLength,
+                top: indicatorOffset,
+                boxShadow: '0 0 4px rgba(245, 158, 11, 0.5)',
+              }}
+            />
+          </div>
         </div>
       </div>
       {showValue && (
-        <span className="text-xs font-mono text-text-muted">
+        <span className="max-w-full truncate text-xs font-mono text-text-muted">
           {displayValue}{unit}
         </span>
       )}
-      <span className="text-xs text-text-secondary">{label}</span>
+      <span className="max-w-full truncate text-xs text-text-secondary">{label}</span>
     </div>
   );
 }

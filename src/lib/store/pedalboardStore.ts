@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { EffectInstance, EffectParameterValue, EffectType, Preset } from '@/types/audio';
-import { EFFECT_TYPE } from '@/types/audio';
 import { getDefaultParameters } from '@/lib/audio/effectFactory';
+import { FACTORY_PRESETS } from '@/lib/constants/presets';
 
 interface PedalboardState {
   ampType: EffectType;
@@ -32,17 +32,17 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-const DEFAULT_AMP_TYPE = EFFECT_TYPE.AMP_CLEAN;
+const DEFAULT_PRESET = FACTORY_PRESETS[0];
 
 export const usePedalboardStore = create<PedalboardState & PedalboardActions>()(
   persist(
     (set, get) => ({
-      ampType: DEFAULT_AMP_TYPE,
-      ampParameters: getDefaultParameters(DEFAULT_AMP_TYPE),
-      effects: [],
+      ampType: DEFAULT_PRESET.pedalboard.ampType,
+      ampParameters: DEFAULT_PRESET.pedalboard.ampParameters,
+      effects: DEFAULT_PRESET.pedalboard.effects,
       selectedEffectId: null,
-      presets: [],
-      activePresetId: null,
+      presets: FACTORY_PRESETS,
+      activePresetId: DEFAULT_PRESET.id,
 
       setAmpType: (type) =>
         set({
@@ -148,15 +148,31 @@ export const usePedalboardStore = create<PedalboardState & PedalboardActions>()(
 
       resetToDefaults: () =>
         set({
-          ampType: DEFAULT_AMP_TYPE,
-          ampParameters: getDefaultParameters(DEFAULT_AMP_TYPE),
-          effects: [],
+          ampType: DEFAULT_PRESET.pedalboard.ampType,
+          ampParameters: DEFAULT_PRESET.pedalboard.ampParameters,
+          effects: DEFAULT_PRESET.pedalboard.effects,
           selectedEffectId: null,
-          activePresetId: null,
+          activePresetId: DEFAULT_PRESET.id,
         }),
     }),
     {
       name: 'multi-effect-pedalboard',
+      merge: (persisted, current) => {
+        const persistedState = persisted as Partial<PedalboardState & PedalboardActions> | undefined;
+        if (!persistedState) return current;
+
+        // Ensure factory presets are always present
+        const persistedPresets = persistedState.presets ?? [];
+        const factoryIds = new Set(FACTORY_PRESETS.map((p) => p.id));
+        const userPresets = persistedPresets.filter((p) => !factoryIds.has(p.id));
+        const mergedPresets = [...FACTORY_PRESETS, ...userPresets];
+
+        return {
+          ...current,
+          ...persistedState,
+          presets: mergedPresets,
+        };
+      },
     },
   ),
 );

@@ -46,6 +46,7 @@ export const EFFECT_TYPE = {
   EQ: 'eq',
   TREMOLO: 'tremolo',
   PHASER: 'phaser',
+  FUZZ: 'fuzz',
   NOISE_GATE: 'noise-gate',
   AMP_CLEAN: 'amp-clean',
   AMP_CRUNCH: 'amp-crunch',
