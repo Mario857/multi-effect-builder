@@ -5,13 +5,11 @@ import { EffectNode } from '@/lib/audio/effectNode';
  * Input → [Effect1] → [Effect2] → ... → Output
  */
 export class SignalChain {
-  private context: AudioContext;
   private nodes: EffectNode[];
   private inputNode: GainNode;
   private outputNode: GainNode;
 
   constructor(context: AudioContext) {
-    this.context = context;
     this.nodes = [];
     this.inputNode = context.createGain();
     this.outputNode = context.createGain();

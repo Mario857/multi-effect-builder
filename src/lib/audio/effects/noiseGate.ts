@@ -2,7 +2,6 @@ import { EffectNode } from '@/lib/audio/effectNode';
 
 const CHECK_INTERVAL_MS = 10;
 const DB_REFERENCE = 20;
-const PARAM_RAMP_TIME = 0.02;
 
 /**
  * Noise gate that mutes signal below a dB threshold.

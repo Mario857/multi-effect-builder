@@ -1,4 +1,5 @@
 import { EffectNode } from '@/lib/audio/effectNode';
+import { createAudioCurve, setWaveShaperCurve } from '@/lib/audio/curveUtils';
 
 const CURVE_SAMPLES = 44100;
 const SOFT_CLIP_AMOUNT = 0.7;
@@ -6,7 +7,7 @@ const HARD_CLIP_THRESHOLD = 0.5;
 const TUBE_WARMTH = 3;
 
 function createSoftClipCurve(drive: number) {
-  const curve = new Float32Array(CURVE_SAMPLES);
+  const curve = createAudioCurve(CURVE_SAMPLES);
   const amount = drive * 50 + 1;
   for (let i = 0; i < CURVE_SAMPLES; i++) {
     const x = (i * 2) / CURVE_SAMPLES - 1;
@@ -16,7 +17,7 @@ function createSoftClipCurve(drive: number) {
 }
 
 function createHardClipCurve(drive: number) {
-  const curve = new Float32Array(CURVE_SAMPLES);
+  const curve = createAudioCurve(CURVE_SAMPLES);
   const threshold = HARD_CLIP_THRESHOLD + (1 - drive) * HARD_CLIP_THRESHOLD;
   for (let i = 0; i < CURVE_SAMPLES; i++) {
     const x = (i * 2) / CURVE_SAMPLES - 1;
@@ -26,7 +27,7 @@ function createHardClipCurve(drive: number) {
 }
 
 function createTubeClipCurve(drive: number) {
-  const curve = new Float32Array(CURVE_SAMPLES);
+  const curve = createAudioCurve(CURVE_SAMPLES);
   const amount = drive * 20 + 1;
   for (let i = 0; i < CURVE_SAMPLES; i++) {
     const x = (i * 2) / CURVE_SAMPLES - 1;
@@ -52,7 +53,7 @@ export class DistortionEffect extends EffectNode {
     this.drive = 0.5;
     this.waveShaperNode = context.createWaveShaper();
     this.waveShaperNode.oversample = '4x';
-    this.waveShaperNode.curve = createTubeClipCurve(this.drive);
+    setWaveShaperCurve(this.waveShaperNode, () => createTubeClipCurve(this.drive));
 
     this.toneFilter = context.createBiquadFilter();
     this.toneFilter.type = 'lowpass';
@@ -75,7 +76,7 @@ export class DistortionEffect extends EffectNode {
     switch (id) {
       case 'drive':
         this.drive = value;
-        this.waveShaperNode.curve = createTubeClipCurve(value);
+        setWaveShaperCurve(this.waveShaperNode, () => createTubeClipCurve(value));
         break;
       case 'tone':
         this.toneFilter.frequency.linearRampToValueAtTime(value, now + rampTime);
@@ -84,7 +85,6 @@ export class DistortionEffect extends EffectNode {
         this.driveGain.gain.linearRampToValueAtTime(value, now + rampTime);
         break;
       case 'mix':
-        // Mix is handled by the parent bypass/wet balance
         this.wetNode.gain.linearRampToValueAtTime(value, now + rampTime);
         this.bypassNode.gain.linearRampToValueAtTime(1 - value, now + rampTime);
         break;
