@@ -21,6 +21,7 @@ export const FACTORY_PRESETS: readonly Preset[] = [
         { id: 'treble', value: 3 },
         { id: 'presence', value: 2 },
         { id: 'master', value: 0.7 },
+        { id: 'sag', value: 0.2 },
       ],
       effects: [
         {
@@ -75,6 +76,7 @@ export const FACTORY_PRESETS: readonly Preset[] = [
         { id: 'treble', value: 1.5 },
         { id: 'presence', value: 1 },
         { id: 'master', value: 0.65 },
+        { id: 'sag', value: 0.4 },
       ],
       effects: [
         {
@@ -128,6 +130,7 @@ export const FACTORY_PRESETS: readonly Preset[] = [
         { id: 'treble', value: 2 },
         { id: 'presence', value: 1.5 },
         { id: 'master', value: 0.7 },
+        { id: 'sag', value: 0.5 },
       ],
       effects: [
         {
@@ -182,6 +185,7 @@ export const FACTORY_PRESETS: readonly Preset[] = [
         { id: 'treble', value: 2 },
         { id: 'presence', value: 3 },
         { id: 'master', value: 0.7 },
+        { id: 'sag', value: 0.15 },
       ],
       effects: [
         {
@@ -247,6 +251,7 @@ export const FACTORY_PRESETS: readonly Preset[] = [
         { id: 'treble', value: 4 },
         { id: 'presence', value: 2 },
         { id: 'master', value: 0.7 },
+        { id: 'sag', value: 0.2 },
       ],
       effects: [
         {

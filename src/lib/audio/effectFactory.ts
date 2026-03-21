@@ -42,7 +42,7 @@ function isAmpType(type: EffectType): boolean {
 
 export function createEffectNode(context: AudioContext, type: EffectType): EffectNode {
   if (isAmpType(type)) {
-    return new AmpSimulatorEffect(context, type);
+    return AmpSimulatorEffect.create(context, type);
   }
 
   const Constructor = EFFECT_REGISTRY[type];

@@ -1,23 +1,11 @@
 import { EffectNode } from '@/lib/audio/effectNode';
-import { createAudioCurve, setWaveShaperCurve } from '@/lib/audio/curveUtils';
-import { createDCBlockFilter } from '@/lib/audio/filterUtils';
+import { TubePreampNode } from '@/lib/audio/worklets/tubePreampNode';
 import type { EffectType } from '@/types/audio';
 import { EFFECT_TYPE } from '@/types/audio';
 
 const PARAM_RAMP_TIME = 0.02;
-const CURVE_SAMPLES = 8192;
-
-// Preamp boost per type — controls how hard the signal hits the waveshaper.
-// Must be high enough that a typical guitar signal (~0.03 RMS) reaches the
-// saturation region of each curve. Crunch at 6 is the proven reference.
-const PREAMP_BOOST_CLEAN = 8;
-const PREAMP_BOOST_CRUNCH = 6;
-const PREAMP_BOOST_HIGHGAIN = 8;
-const PREAMP_BOOST_ACOUSTIC = 8;
 
 interface AmpCharacter {
-  readonly preampCurveGenerator: (gain: number) => Float32Array<ArrayBuffer>;
-  readonly secondStageCurveGenerator?: (gain: number) => Float32Array<ArrayBuffer>;
   readonly preampBoost: number;
   readonly postTrim: number;
   readonly bassFreq: number;
@@ -36,73 +24,9 @@ interface AmpCharacter {
   readonly cabBodyQ: number;
 }
 
-// Fender-style clean: gentle soft clipping, bright and open
-function createCleanCurve(gain: number): Float32Array<ArrayBuffer> {
-  const curve = createAudioCurve(CURVE_SAMPLES);
-  const amount = gain * 8 + 1;
-  for (let i = 0; i < CURVE_SAMPLES; i++) {
-    const x = (i * 2) / CURVE_SAMPLES - 1;
-    curve[i] = Math.tanh(x * amount);
-  }
-  return curve;
-}
-
-// Marshall-style crunch: asymmetric tube clipping
-function createCrunchCurve(gain: number): Float32Array<ArrayBuffer> {
-  const curve = createAudioCurve(CURVE_SAMPLES);
-  const amount = gain * 15 + 2;
-  for (let i = 0; i < CURVE_SAMPLES; i++) {
-    const x = (i * 2) / CURVE_SAMPLES - 1;
-    if (x >= 0) {
-      curve[i] = 1 - Math.exp(-amount * x);
-    } else {
-      curve[i] = -(1 - Math.exp(amount * x * 0.5));
-    }
-  }
-  return curve;
-}
-
-// Mesa-style high gain stage 1: controlled saturation
-function createHighGainCurve(gain: number): Float32Array<ArrayBuffer> {
-  const curve = createAudioCurve(CURVE_SAMPLES);
-  const amount = gain * 20 + 4;
-  for (let i = 0; i < CURVE_SAMPLES; i++) {
-    const x = (i * 2) / CURVE_SAMPLES - 1;
-    if (x >= 0) {
-      curve[i] = 1 - Math.exp(-amount * x);
-    } else {
-      curve[i] = -(1 - Math.exp(amount * x * 0.7));
-    }
-  }
-  return curve;
-}
-
-// High gain stage 2: gentle compression, adds harmonics without more fizz
-function createHighGainStage2Curve(gain: number): Float32Array<ArrayBuffer> {
-  const curve = createAudioCurve(CURVE_SAMPLES);
-  const amount = gain * 8 + 2;
-  for (let i = 0; i < CURVE_SAMPLES; i++) {
-    const x = (i * 2) / CURVE_SAMPLES - 1;
-    curve[i] = Math.tanh(x * amount) * 0.95;
-  }
-  return curve;
-}
-
-// Acoustic sim: transparent with mild warmth
-function createAcousticCurve(gain: number): Float32Array<ArrayBuffer> {
-  const curve = createAudioCurve(CURVE_SAMPLES);
-  const amount = gain * 3 + 1;
-  for (let i = 0; i < CURVE_SAMPLES; i++) {
-    const x = (i * 2) / CURVE_SAMPLES - 1;
-    curve[i] = Math.tanh(x * amount);
-  }
-  return curve;
-}
-
 const AMP_CHARACTERS: Record<string, AmpCharacter> = {
   [EFFECT_TYPE.AMP_CLEAN]: {
-    preampCurveGenerator: createCleanCurve,
-    preampBoost: PREAMP_BOOST_CLEAN,
+    preampBoost: 8,
     postTrim: 0.85,
     bassFreq: 150,
     midFreq: 800,
@@ -119,8 +43,7 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
     cabBodyQ: 0.8,
   },
   [EFFECT_TYPE.AMP_CRUNCH]: {
-    preampCurveGenerator: createCrunchCurve,
-    preampBoost: PREAMP_BOOST_CRUNCH,
+    preampBoost: 6,
     postTrim: 0.7,
     bassFreq: 200,
     midFreq: 1000,
@@ -137,9 +60,7 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
     cabBodyQ: 1.0,
   },
   [EFFECT_TYPE.AMP_HIGHGAIN]: {
-    preampCurveGenerator: createHighGainCurve,
-    secondStageCurveGenerator: createHighGainStage2Curve,
-    preampBoost: PREAMP_BOOST_HIGHGAIN,
+    preampBoost: 8,
     postTrim: 0.5,
     bassFreq: 100,
     midFreq: 700,
@@ -157,8 +78,7 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
     cabBodyQ: 1.2,
   },
   [EFFECT_TYPE.AMP_ACOUSTIC]: {
-    preampCurveGenerator: createAcousticCurve,
-    preampBoost: PREAMP_BOOST_ACOUSTIC,
+    preampBoost: 8,
     postTrim: 0.9,
     bassFreq: 200,
     midFreq: 1200,
@@ -179,11 +99,7 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
 export class AmpSimulatorEffect extends EffectNode {
   private inputLowCut: BiquadFilterNode;
   private inputHighCut: BiquadFilterNode;
-  private preampGain: GainNode;
-  private preampWaveShaper: WaveShaperNode;
-  private dcBlock1: BiquadFilterNode;
-  private cascadedStage: WaveShaperNode | null;
-  private dcBlock2: BiquadFilterNode | null;
+  private tubePreamp: TubePreampNode;
   private smoothingFilter: BiquadFilterNode;
   private postGainTrim: GainNode;
   private bassFilter: BiquadFilterNode;
@@ -197,11 +113,16 @@ export class AmpSimulatorEffect extends EffectNode {
   private character: AmpCharacter;
   private currentGain: number;
 
-  constructor(context: AudioContext, ampType: EffectType) {
+  /**
+   * Use AmpSimulatorEffect.create() instead — the worklet module must be
+   * registered on the AudioContext before constructing the node.
+   */
+  private constructor(context: AudioContext, tubePreamp: TubePreampNode, ampType: EffectType) {
     super(context);
 
     this.character = AMP_CHARACTERS[ampType] || AMP_CHARACTERS[EFFECT_TYPE.AMP_CLEAN];
     this.currentGain = 0.5;
+    this.tubePreamp = tubePreamp;
 
     // Input filtering — tight bandpass before any amplification
     this.inputLowCut = context.createBiquadFilter();
@@ -213,30 +134,6 @@ export class AmpSimulatorEffect extends EffectNode {
     this.inputHighCut.type = 'lowpass';
     this.inputHighCut.frequency.value = this.character.inputHighCut;
     this.inputHighCut.Q.value = 0.7;
-
-    // Preamp gain stage
-    this.preampGain = context.createGain();
-    this.preampGain.gain.value = this.character.preampBoost * this.currentGain + 1;
-
-    // Primary waveshaper stage
-    this.preampWaveShaper = context.createWaveShaper();
-    this.preampWaveShaper.oversample = '4x';
-    setWaveShaperCurve(this.preampWaveShaper, () => this.character.preampCurveGenerator(this.currentGain));
-
-    this.dcBlock1 = createDCBlockFilter(context);
-
-    // Optional cascaded second stage
-    this.cascadedStage = null;
-    this.dcBlock2 = null;
-    if (this.character.secondStageCurveGenerator) {
-      this.cascadedStage = context.createWaveShaper();
-      this.cascadedStage.oversample = '4x';
-      setWaveShaperCurve(
-        this.cascadedStage,
-        () => this.character.secondStageCurveGenerator!(this.currentGain),
-      );
-      this.dcBlock2 = createDCBlockFilter(context);
-    }
 
     // Post-clipping smoothing — simulates coupling capacitor between tube stages.
     // Rounds off harsh waveshaper harmonics before they hit the tone stack.
@@ -298,23 +195,12 @@ export class AmpSimulatorEffect extends EffectNode {
     this.masterGain.gain.value = 0.7;
 
     // Signal path:
-    // input → lowCut → highCut → preampGain → waveshaper1 → dcBlock1
-    //   → [waveshaper2 → dcBlock2] → smoothing → postTrim
+    // input → lowCut → highCut → tubePreamp(worklet) → smoothing → postTrim
     //   → tone stack → cabBody → cabLP1 → cabLP2 → master → wet
     this.inputNode.connect(this.inputLowCut);
     this.inputLowCut.connect(this.inputHighCut);
-    this.inputHighCut.connect(this.preampGain);
-    this.preampGain.connect(this.preampWaveShaper);
-    this.preampWaveShaper.connect(this.dcBlock1);
-
-    let lastStage: AudioNode = this.dcBlock1;
-    if (this.cascadedStage && this.dcBlock2) {
-      this.dcBlock1.connect(this.cascadedStage);
-      this.cascadedStage.connect(this.dcBlock2);
-      lastStage = this.dcBlock2;
-    }
-
-    lastStage.connect(this.smoothingFilter);
+    this.inputHighCut.connect(this.tubePreamp.node);
+    this.tubePreamp.connect(this.smoothingFilter);
     this.smoothingFilter.connect(this.postGainTrim);
     this.postGainTrim.connect(this.bassFilter);
     this.bassFilter.connect(this.midFilter);
@@ -327,22 +213,20 @@ export class AmpSimulatorEffect extends EffectNode {
     this.masterGain.connect(this.wetNode);
   }
 
+  /**
+   * Async factory — creates the AudioWorkletNode then wires the signal chain.
+   */
+  static create(context: AudioContext, ampType: EffectType): AmpSimulatorEffect {
+    const tubePreamp = TubePreampNode.create(context, ampType);
+    return new AmpSimulatorEffect(context, tubePreamp, ampType);
+  }
+
   setParameter(id: string, value: number): void {
     const now = this.context.currentTime;
     switch (id) {
       case 'gain':
         this.currentGain = value;
-        this.preampGain.gain.linearRampToValueAtTime(
-          this.character.preampBoost * value + 1,
-          now + PARAM_RAMP_TIME,
-        );
-        setWaveShaperCurve(this.preampWaveShaper, () => this.character.preampCurveGenerator(value));
-        if (this.cascadedStage && this.character.secondStageCurveGenerator) {
-          setWaveShaperCurve(
-            this.cascadedStage,
-            () => this.character.secondStageCurveGenerator!(value),
-          );
-        }
+        this.tubePreamp.setGain(value, now);
         break;
       case 'bass':
         this.bassFilter.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
@@ -359,17 +243,16 @@ export class AmpSimulatorEffect extends EffectNode {
       case 'master':
         this.masterGain.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
         break;
+      case 'sag':
+        this.tubePreamp.setSagAmount(value, now);
+        break;
     }
   }
 
   dispose(): void {
     this.inputLowCut.disconnect();
     this.inputHighCut.disconnect();
-    this.preampGain.disconnect();
-    this.preampWaveShaper.disconnect();
-    this.dcBlock1.disconnect();
-    this.cascadedStage?.disconnect();
-    this.dcBlock2?.disconnect();
+    this.tubePreamp.disconnect();
     this.smoothingFilter.disconnect();
     this.postGainTrim.disconnect();
     this.bassFilter.disconnect();

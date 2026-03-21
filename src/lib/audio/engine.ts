@@ -1,5 +1,5 @@
 import { SignalChain } from '@/lib/audio/signalChain';
-import { FFT_SIZE, SMOOTHING_TIME_CONSTANT } from '@/lib/constants/audio';
+import { FFT_SIZE, SMOOTHING_TIME_CONSTANT, TUBE_PREAMP_WORKLET_PATH } from '@/lib/constants/audio';
 
 /**
  * Core audio engine managing Web Audio API context, input stream,
@@ -50,6 +50,9 @@ export class AudioEngine {
     if (this._isRunning) return;
 
     this.context = new AudioContext({ latencyHint: 'interactive' });
+
+    // Register AudioWorklet modules before creating any nodes that depend on them
+    await this.context.audioWorklet.addModule(TUBE_PREAMP_WORKLET_PATH);
 
     // Force mono input — Focusrite and other interfaces present as stereo
     // but guitar is on one channel only; downmix prevents one-sided output

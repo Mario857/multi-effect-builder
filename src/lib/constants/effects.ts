@@ -138,6 +138,7 @@ const AMP_SHARED_PARAMETERS = [
   { id: 'treble', name: 'Treble', min: -12, max: 12, step: 0.5, defaultValue: 0, unit: 'dB' },
   { id: 'presence', name: 'Presence', min: -12, max: 12, step: 0.5, defaultValue: 0, unit: 'dB' },
   { id: 'master', name: 'Master', min: 0, max: 1, step: 0.01, defaultValue: 0.7, unit: '' },
+  { id: 'sag', name: 'Sag', min: 0, max: 1, step: 0.01, defaultValue: 0.3, unit: '' },
 ] as const;
 
 export const AMP_CLEAN_DEFINITION: EffectDefinition = {
