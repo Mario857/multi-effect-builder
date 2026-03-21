@@ -1,4 +1,5 @@
 import { SignalChain } from '@/lib/audio/signalChain';
+import { preloadAllCabIRs } from '@/lib/audio/cabImpulseResponse';
 import { FFT_SIZE, SMOOTHING_TIME_CONSTANT, TUBE_PREAMP_WORKLET_PATH } from '@/lib/constants/audio';
 
 /**
@@ -51,8 +52,12 @@ export class AudioEngine {
 
     this.context = new AudioContext({ latencyHint: 'interactive' });
 
-    // Register AudioWorklet modules before creating any nodes that depend on them
-    await this.context.audioWorklet.addModule(TUBE_PREAMP_WORKLET_PATH);
+    // Register AudioWorklet modules and preload cabinet IRs in parallel
+    // Both must complete before creating any amp nodes
+    await Promise.all([
+      this.context.audioWorklet.addModule(TUBE_PREAMP_WORKLET_PATH),
+      preloadAllCabIRs(this.context),
+    ]);
 
     // Force mono input — Focusrite and other interfaces present as stereo
     // but guitar is on one channel only; downmix prevents one-sided output

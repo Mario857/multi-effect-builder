@@ -1,5 +1,6 @@
 import { EffectNode } from '@/lib/audio/effectNode';
 import { TubePreampNode } from '@/lib/audio/worklets/tubePreampNode';
+import { getCachedCabIR } from '@/lib/audio/cabImpulseResponse';
 import type { EffectType } from '@/types/audio';
 import { EFFECT_TYPE } from '@/types/audio';
 
@@ -15,7 +16,7 @@ interface AmpCharacter {
   readonly inputHighCut: number;
   // Post-clipping smoothing — simulates coupling capacitor bandwidth between stages
   readonly smoothingCutoff: number;
-  // Cabinet speaker simulation — filter chain
+  // Filter chain cab fallback — used when IR file is not available
   readonly cabCutoff: number;
   readonly cabCutoffQ: number;
   readonly cabBodyFreq: number;
@@ -33,7 +34,6 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
     presenceFreq: 6000,
     inputHighCut: 7000,
     smoothingCutoff: 7000,
-    // Bright, open speaker — Fender-style sparkle with warm rolloff
     cabCutoff: 5500,
     cabCutoffQ: 0.9,
     cabBodyFreq: 140,
@@ -49,7 +49,6 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
     presenceFreq: 5500,
     inputHighCut: 5500,
     smoothingCutoff: 5500,
-    // Marshall-style 4x12 — mid-forward, warm, no fizz
     cabCutoff: 4800,
     cabCutoffQ: 1.0,
     cabBodyFreq: 120,
@@ -64,9 +63,7 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
     trebleFreq: 3000,
     presenceFreq: 5000,
     inputHighCut: 5000,
-    // Aggressive smoothing — high gain generates the most harsh harmonics
     smoothingCutoff: 4500,
-    // Tight Mesa-style cab — focused, not boomy
     cabCutoff: 4400,
     cabCutoffQ: 1.1,
     cabBodyFreq: 100,
@@ -82,7 +79,6 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
     presenceFreq: 8000,
     inputHighCut: 8000,
     smoothingCutoff: 8000,
-    // Acoustic — full-range, transparent, gentle warmth
     cabCutoff: 6000,
     cabCutoffQ: 0.7,
     cabBodyFreq: 160,
@@ -101,9 +97,11 @@ export class AmpSimulatorEffect extends EffectNode {
   private midFilter: BiquadFilterNode;
   private trebleFilter: BiquadFilterNode;
   private presenceFilter: BiquadFilterNode;
-  private cabLowpass1: BiquadFilterNode;
-  private cabLowpass2: BiquadFilterNode;
-  private cabBody: BiquadFilterNode;
+  // Cabinet simulation — ConvolverNode with real IR, or filter chain fallback
+  private cabConvolver: ConvolverNode | null;
+  private cabLowpass1: BiquadFilterNode | null;
+  private cabLowpass2: BiquadFilterNode | null;
+  private cabBody: BiquadFilterNode | null;
   private masterGain: GainNode;
   private character: AmpCharacter;
 
@@ -161,34 +159,19 @@ export class AmpSimulatorEffect extends EffectNode {
     this.presenceFilter.Q.value = 1.0;
     this.presenceFilter.gain.value = 0;
 
-    // Cabinet speaker simulation — cascaded lowpass for steep rolloff like a real speaker
-    // Two lowpass stages = 4th-order (24dB/oct) — tames harsh harmonics aggressively
-    this.cabLowpass1 = context.createBiquadFilter();
-    this.cabLowpass1.type = 'lowpass';
-    this.cabLowpass1.frequency.value = this.character.cabCutoff;
-    this.cabLowpass1.Q.value = this.character.cabCutoffQ;
+    // Cabinet simulation — use real IR if available, filter chain fallback otherwise
+    const irBuffer = getCachedCabIR(ampType);
 
-    // Second stage offset higher — steep rolloff above the cutoff but doesn't
-    // double-kill the presence region right at the knee
-    this.cabLowpass2 = context.createBiquadFilter();
-    this.cabLowpass2.type = 'lowpass';
-    this.cabLowpass2.frequency.value = this.character.cabCutoff * 1.4;
-    this.cabLowpass2.Q.value = 0.5;
-
-    // Body: speaker cone resonance adds warmth and thump
-    this.cabBody = context.createBiquadFilter();
-    this.cabBody.type = 'peaking';
-    this.cabBody.frequency.value = this.character.cabBodyFreq;
-    this.cabBody.gain.value = this.character.cabBodyGain;
-    this.cabBody.Q.value = this.character.cabBodyQ;
+    this.cabConvolver = null;
+    this.cabLowpass1 = null;
+    this.cabLowpass2 = null;
+    this.cabBody = null;
 
     // Master volume
     this.masterGain = context.createGain();
     this.masterGain.gain.value = 0.7;
 
-    // Signal path:
-    // input → lowCut → highCut → tubePreamp(worklet) → smoothing → postTrim
-    //   → tone stack → cabBody → cabLP1 → cabLP2 → master → wet
+    // Build signal path
     this.inputNode.connect(this.inputLowCut);
     this.inputLowCut.connect(this.inputHighCut);
     this.inputHighCut.connect(this.tubePreamp.node);
@@ -198,16 +181,43 @@ export class AmpSimulatorEffect extends EffectNode {
     this.bassFilter.connect(this.midFilter);
     this.midFilter.connect(this.trebleFilter);
     this.trebleFilter.connect(this.presenceFilter);
-    this.presenceFilter.connect(this.cabBody);
-    this.cabBody.connect(this.cabLowpass1);
-    this.cabLowpass1.connect(this.cabLowpass2);
-    this.cabLowpass2.connect(this.masterGain);
+
+    if (irBuffer) {
+      // Real cab IR path — ConvolverNode with recorded impulse response
+      this.cabConvolver = context.createConvolver();
+      this.cabConvolver.buffer = irBuffer;
+      this.presenceFilter.connect(this.cabConvolver);
+      this.cabConvolver.connect(this.masterGain);
+    } else {
+      // Filter chain fallback — cascaded lowpass + body peaking
+      this.cabBody = context.createBiquadFilter();
+      this.cabBody.type = 'peaking';
+      this.cabBody.frequency.value = this.character.cabBodyFreq;
+      this.cabBody.gain.value = this.character.cabBodyGain;
+      this.cabBody.Q.value = this.character.cabBodyQ;
+
+      this.cabLowpass1 = context.createBiquadFilter();
+      this.cabLowpass1.type = 'lowpass';
+      this.cabLowpass1.frequency.value = this.character.cabCutoff;
+      this.cabLowpass1.Q.value = this.character.cabCutoffQ;
+
+      this.cabLowpass2 = context.createBiquadFilter();
+      this.cabLowpass2.type = 'lowpass';
+      this.cabLowpass2.frequency.value = this.character.cabCutoff * 1.4;
+      this.cabLowpass2.Q.value = 0.5;
+
+      this.presenceFilter.connect(this.cabBody);
+      this.cabBody.connect(this.cabLowpass1);
+      this.cabLowpass1.connect(this.cabLowpass2);
+      this.cabLowpass2.connect(this.masterGain);
+    }
+
     this.masterGain.connect(this.wetNode);
   }
 
   /**
    * Factory — creates the AudioWorkletNode then wires the signal chain.
-   * Worklet module must already be registered via AudioEngine.start().
+   * Worklet module and cab IRs must already be loaded via AudioEngine.start().
    */
   static create(context: AudioContext, ampType: EffectType): AmpSimulatorEffect {
     const tubePreamp = TubePreampNode.create(context, ampType);
@@ -251,9 +261,10 @@ export class AmpSimulatorEffect extends EffectNode {
     this.midFilter.disconnect();
     this.trebleFilter.disconnect();
     this.presenceFilter.disconnect();
-    this.cabBody.disconnect();
-    this.cabLowpass1.disconnect();
-    this.cabLowpass2.disconnect();
+    this.cabConvolver?.disconnect();
+    this.cabBody?.disconnect();
+    this.cabLowpass1?.disconnect();
+    this.cabLowpass2?.disconnect();
     this.masterGain.disconnect();
     this.disposeBase();
   }
