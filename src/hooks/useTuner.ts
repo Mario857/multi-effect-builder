@@ -11,7 +11,6 @@ import {
 import { useAudioStore } from '@/lib/store/audioStore';
 
 const TUNER_UPDATE_INTERVAL_MS = 50;
-const CENTS_PER_OCTAVE = 1200;
 const NOTES_PER_OCTAVE = 12;
 const AUTOCORRELATION_THRESHOLD = 0.9;
 
