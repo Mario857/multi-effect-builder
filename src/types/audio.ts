@@ -56,6 +56,16 @@ export const EFFECT_TYPE = {
 
 export type EffectType = (typeof EFFECT_TYPE)[keyof typeof EFFECT_TYPE];
 
+/** Effect types that are amp models — exactly one is active at the head of the chain. */
+export type AmpType =
+  | typeof EFFECT_TYPE.AMP_CLEAN
+  | typeof EFFECT_TYPE.AMP_CRUNCH
+  | typeof EFFECT_TYPE.AMP_HIGHGAIN
+  | typeof EFFECT_TYPE.AMP_ACOUSTIC;
+
+/** Effect types that can be placed on the pedalboard (everything except amp models). */
+export type PedalEffectType = Exclude<EffectType, AmpType>;
+
 export interface EffectParameterDefinition {
   readonly id: string;
   readonly name: string;

@@ -1,6 +1,6 @@
-import type { EffectType, EffectParameterValue } from '@/types/audio';
+import type { AmpType, EffectType, EffectParameterValue, PedalEffectType } from '@/types/audio';
 import { EFFECT_TYPE } from '@/types/audio';
-import { EFFECT_DEFINITIONS } from '@/lib/constants/effects';
+import { AMP_TYPES, EFFECT_DEFINITIONS } from '@/lib/constants/effects';
 import { EffectNode } from '@/lib/audio/effectNode';
 import { DistortionEffect } from '@/lib/audio/effects/distortion';
 import { DelayEffect } from '@/lib/audio/effects/delay';
@@ -16,7 +16,7 @@ import { AmpSimulatorEffect } from '@/lib/audio/effects/ampSimulator';
 
 type EffectConstructor = new (context: AudioContext) => EffectNode;
 
-const EFFECT_REGISTRY: Record<string, EffectConstructor> = {
+const EFFECT_REGISTRY: Record<PedalEffectType, EffectConstructor> = {
   [EFFECT_TYPE.DISTORTION]: DistortionEffect,
   [EFFECT_TYPE.DELAY]: DelayEffect,
   [EFFECT_TYPE.REVERB]: ReverbEffect,
@@ -29,14 +29,9 @@ const EFFECT_REGISTRY: Record<string, EffectConstructor> = {
   [EFFECT_TYPE.NOISE_GATE]: NoiseGateEffect,
 };
 
-const AMP_TYPES_SET: Set<EffectType> = new Set([
-  EFFECT_TYPE.AMP_CLEAN,
-  EFFECT_TYPE.AMP_CRUNCH,
-  EFFECT_TYPE.AMP_HIGHGAIN,
-  EFFECT_TYPE.AMP_ACOUSTIC,
-]);
+const AMP_TYPES_SET: ReadonlySet<EffectType> = new Set(AMP_TYPES);
 
-function isAmpType(type: EffectType): boolean {
+export function isAmpType(type: EffectType): type is AmpType {
   return AMP_TYPES_SET.has(type);
 }
 
@@ -46,10 +41,6 @@ export function createEffectNode(context: AudioContext, type: EffectType): Effec
   }
 
   const Constructor = EFFECT_REGISTRY[type];
-  if (!Constructor) {
-    throw new Error(`Unknown effect type: ${type}`);
-  }
-
   return new Constructor(context);
 }
 
