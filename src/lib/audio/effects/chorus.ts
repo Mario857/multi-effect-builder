@@ -1,64 +1,72 @@
 import { EffectNode } from '@/lib/audio/effectNode';
+import { CHORUS_DEFINITION } from '@/lib/constants/effects';
 
-const PARAM_RAMP_TIME = 0.02;
-const DEFAULT_CHORUS_DELAY = 0.01;
+// Size of the delay line — longest base delay (0.05 s) plus the deepest modulation, with headroom
+const MAX_DELAY_SECONDS = 0.1;
+// Peak LFO swing of the delay time at full depth
+const MAX_MODULATION_SECONDS = 0.01;
 
+/**
+ * Chorus: a short delay line whose delay time is swept by a sine LFO,
+ * blended with the dry signal.
+ */
 export class ChorusEffect extends EffectNode {
   private delayNode: DelayNode;
   private lfo: OscillatorNode;
   private lfoGain: GainNode;
-  private wetGain: GainNode;
-  private dryGain: GainNode;
+  private depth: number;
+  private baseDelay: number;
 
   constructor(context: AudioContext) {
     super(context);
 
-    this.delayNode = context.createDelay(0.1);
-    this.delayNode.delayTime.value = DEFAULT_CHORUS_DELAY;
+    // Placeholders until applyDefaults() below sets the real values
+    this.depth = 0;
+    this.baseDelay = 0;
+
+    this.delayNode = context.createDelay(MAX_DELAY_SECONDS);
 
     this.lfo = context.createOscillator();
     this.lfo.type = 'sine';
-    this.lfo.frequency.value = 1.5;
 
     this.lfoGain = context.createGain();
-    this.lfoGain.gain.value = 0.005;
-
-    this.wetGain = context.createGain();
-    this.wetGain.gain.value = 0.5;
-
-    this.dryGain = context.createGain();
-    this.dryGain.gain.value = 0.5;
 
     // LFO modulates delay time
     this.lfo.connect(this.lfoGain);
     this.lfoGain.connect(this.delayNode.delayTime);
     this.lfo.start();
 
-    // Wet: input → delay → wetGain → wetNode
+    // Wet: input → delay → wetNode
     this.inputNode.connect(this.delayNode);
-    this.delayNode.connect(this.wetGain);
-    this.wetGain.connect(this.wetNode);
+    this.delayNode.connect(this.wetNode);
 
-    // Dry: input → dryGain → wetNode
-    this.inputNode.connect(this.dryGain);
-    this.dryGain.connect(this.wetNode);
+    this.applyDefaults(CHORUS_DEFINITION);
   }
 
-  setParameter(id: string, value: number): void {
-    const now = this.context.currentTime;
+  private updateModulation(): void {
+    // The swing may never exceed the base delay: the LFO trough would otherwise
+    // ask for a negative delay time, which the browser clamps to zero —
+    // flattening the bottom of the sweep.
+    const maxSwing = Math.min(MAX_MODULATION_SECONDS, this.baseDelay);
+    this.setParam(this.lfoGain.gain, this.depth * maxSwing);
+  }
+
+  protected applyParameter(id: string, value: number): void {
     switch (id) {
       case 'rate':
-        this.lfo.frequency.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.lfo.frequency, value);
         break;
       case 'depth':
-        this.lfoGain.gain.linearRampToValueAtTime(value * 0.01, now + PARAM_RAMP_TIME);
+        this.depth = value;
+        this.updateModulation();
         break;
       case 'mix':
-        this.wetGain.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
-        this.dryGain.gain.linearRampToValueAtTime(1 - value, now + PARAM_RAMP_TIME);
+        this.setMix(value);
         break;
       case 'delay':
-        this.delayNode.delayTime.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.baseDelay = value;
+        this.setParam(this.delayNode.delayTime, value);
+        this.updateModulation();
         break;
     }
   }
@@ -68,8 +76,6 @@ export class ChorusEffect extends EffectNode {
     this.lfo.disconnect();
     this.lfoGain.disconnect();
     this.delayNode.disconnect();
-    this.wetGain.disconnect();
-    this.dryGain.disconnect();
     this.disposeBase();
   }
 }

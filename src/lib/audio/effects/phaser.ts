@@ -1,17 +1,25 @@
 import { EffectNode } from '@/lib/audio/effectNode';
+import { createBiquadFilter } from '@/lib/audio/filterUtils';
+import { RENDER_QUANTUM_FRAMES } from '@/lib/constants/dsp';
+import { PHASER_DEFINITION } from '@/lib/constants/effects';
 
-const PARAM_RAMP_TIME = 0.02;
 const ALLPASS_STAGE_COUNT = 6;
 const BASE_FREQUENCY = 1000;
 const FREQUENCY_MULTIPLIER = 1.5;
+const ALLPASS_Q = 0.5;
+// Peak LFO sweep of each allpass centre frequency at full depth
+const MAX_SWEEP_HZ = 1000;
 
+/**
+ * Phaser: a chain of allpass filters swept by a sine LFO, with feedback
+ * around the chain and a dry/wet blend that creates the moving notches.
+ */
 export class PhaserEffect extends EffectNode {
   private allpassFilters: BiquadFilterNode[];
   private lfo: OscillatorNode;
   private lfoGain: GainNode;
   private feedbackGain: GainNode;
-  private wetGain: GainNode;
-  private dryGain: GainNode;
+  private feedbackDelay: DelayNode;
 
   constructor(context: AudioContext) {
     super(context);
@@ -19,28 +27,28 @@ export class PhaserEffect extends EffectNode {
     // Create allpass filter chain
     this.allpassFilters = [];
     for (let i = 0; i < ALLPASS_STAGE_COUNT; i++) {
-      const filter = context.createBiquadFilter();
-      filter.type = 'allpass';
-      filter.frequency.value = BASE_FREQUENCY * Math.pow(FREQUENCY_MULTIPLIER, i);
-      filter.Q.value = 0.5;
+      const filter = createBiquadFilter(context, {
+        type: 'allpass',
+        frequency: BASE_FREQUENCY * Math.pow(FREQUENCY_MULTIPLIER, i),
+        q: ALLPASS_Q,
+      });
       this.allpassFilters.push(filter);
     }
 
     this.lfo = context.createOscillator();
     this.lfo.type = 'sine';
-    this.lfo.frequency.value = 0.8;
 
     this.lfoGain = context.createGain();
-    this.lfoGain.gain.value = 500;
 
     this.feedbackGain = context.createGain();
-    this.feedbackGain.gain.value = 0.4;
 
-    this.wetGain = context.createGain();
-    this.wetGain.gain.value = 0.5;
-
-    this.dryGain = context.createGain();
-    this.dryGain.gain.value = 0.5;
+    // Web Audio mutes any cycle that does not contain a DelayNode, and the
+    // shortest delay allowed inside a cycle is one render quantum. Chromium
+    // quietly inserts that one-block delay itself, Firefox follows the spec and
+    // silences the loop — an explicit DelayNode makes both behave the same.
+    const feedbackDelaySeconds = RENDER_QUANTUM_FRAMES / context.sampleRate;
+    this.feedbackDelay = context.createDelay(feedbackDelaySeconds);
+    this.feedbackDelay.delayTime.value = feedbackDelaySeconds;
 
     // LFO modulates all allpass filter frequencies
     this.lfo.connect(this.lfoGain);
@@ -55,35 +63,31 @@ export class PhaserEffect extends EffectNode {
       this.allpassFilters[i].connect(this.allpassFilters[i + 1]);
     }
 
-    // Last filter → wetGain → wetNode
+    // Last filter → wetNode
     const lastFilter = this.allpassFilters[this.allpassFilters.length - 1];
-    lastFilter.connect(this.wetGain);
-    this.wetGain.connect(this.wetNode);
+    lastFilter.connect(this.wetNode);
 
-    // Feedback: last filter → feedback → first filter
+    // Feedback: last filter → feedback → delay → first filter
     lastFilter.connect(this.feedbackGain);
-    this.feedbackGain.connect(this.allpassFilters[0]);
+    this.feedbackGain.connect(this.feedbackDelay);
+    this.feedbackDelay.connect(this.allpassFilters[0]);
 
-    // Dry: input → dryGain → wetNode
-    this.inputNode.connect(this.dryGain);
-    this.dryGain.connect(this.wetNode);
+    this.applyDefaults(PHASER_DEFINITION);
   }
 
-  setParameter(id: string, value: number): void {
-    const now = this.context.currentTime;
+  protected applyParameter(id: string, value: number): void {
     switch (id) {
       case 'rate':
-        this.lfo.frequency.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.lfo.frequency, value);
         break;
       case 'depth':
-        this.lfoGain.gain.linearRampToValueAtTime(value * 1000, now + PARAM_RAMP_TIME);
+        this.setParam(this.lfoGain.gain, value * MAX_SWEEP_HZ);
         break;
       case 'feedback':
-        this.feedbackGain.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.feedbackGain.gain, value);
         break;
       case 'mix':
-        this.wetGain.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
-        this.dryGain.gain.linearRampToValueAtTime(1 - value, now + PARAM_RAMP_TIME);
+        this.setMix(value);
         break;
     }
   }
@@ -93,8 +97,7 @@ export class PhaserEffect extends EffectNode {
     this.lfo.disconnect();
     this.lfoGain.disconnect();
     this.feedbackGain.disconnect();
-    this.wetGain.disconnect();
-    this.dryGain.disconnect();
+    this.feedbackDelay.disconnect();
     for (const filter of this.allpassFilters) {
       filter.disconnect();
     }
