@@ -2,6 +2,7 @@
 
 import * as RadixSlider from '@radix-ui/react-slider';
 import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
+import { DEFAULT_CONTROL_STEP, FOCUS_RING_CLASSES } from '@/lib/constants/ui';
 
 interface Props {
   value: number;
@@ -13,11 +14,15 @@ interface Props {
   className?: string;
 }
 
+/**
+ * Horizontal slider for a single value (Radix Slider: full keyboard and touch support).
+ * `aria-label` names the thumb, which is the element assistive technology announces.
+ */
 export function Slider({
   value,
   min,
   max,
-  step = 0.01,
+  step = DEFAULT_CONTROL_STEP,
   onChange,
   'aria-label': ariaLabel,
   className,
@@ -33,7 +38,6 @@ export function Slider({
       max={max}
       step={step}
       onValueChange={handleValueChange}
-      aria-label={ariaLabel}
       className={mergeClassNames(
         'relative flex h-5 w-full touch-none items-center select-none',
         className,
@@ -47,13 +51,16 @@ export function Slider({
       >
         <RadixSlider.Range className="absolute h-full rounded-full bg-accent-primary" />
       </RadixSlider.Track>
+      {/* The thumb is the element with role="slider", so the label has to go on it:
+          Radix does not forward the root's aria-label. */}
       <RadixSlider.Thumb
+        aria-label={ariaLabel}
         className={mergeClassNames(
           'block h-4 w-4 rounded-full',
           'bg-text-primary shadow-sm',
           'transition-shadow duration-150 ease-out',
           'hover:shadow-(--shadow-knob)',
-          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary',
+          FOCUS_RING_CLASSES,
         )}
       />
     </RadixSlider.Root>
