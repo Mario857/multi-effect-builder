@@ -1,49 +1,86 @@
 'use client';
 
-import { Guitar, Mic, Activity } from 'lucide-react';
+import { Activity, Guitar, LoaderCircle, Square, Volume2, VolumeX } from 'lucide-react';
 import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
-import { Toggle } from '@/components/shared/Toggle';
+import { InputDeviceSelect } from '@/components/audio/InputDeviceSelect';
+import { Button } from '@/components/shared/Button';
 import { IconButton } from '@/components/shared/IconButton';
-import { useAudioStore } from '@/lib/store/audioStore';
-import { useAudioInput } from '@/hooks/useAudioInput';
+import { Toggle } from '@/components/shared/Toggle';
+import { useHeaderControls } from '@/hooks/useHeaderControls';
 
 interface Props {
-  onStartEngine: () => void;
   isEngineRunning: boolean;
+  /** True while the engine is loading or waiting for microphone permission. */
+  isEngineStarting: boolean;
+  onStartEngine: () => void;
+  /** Stops the engine, which is what releases the microphone. */
+  onStopEngine: () => void;
 }
 
-export function Header({ onStartEngine, isEngineRunning }: Props) {
+/**
+ * App header: the logo, the control that starts and stops the audio engine with its
+ * status, the input picker, the monitor switch and the tuner button.
+ */
+export function Header({ isEngineRunning, isEngineStarting, onStartEngine, onStopEngine }: Props) {
   const {
     isMonitoring,
     isTunerActive,
+    engineButtonRef,
+    handleStartEngine,
     setMonitoring,
-    setTunerActive,
-  } = useAudioStore();
+    handleToggleTuner,
+  } = useHeaderControls({ isEngineStarting, onStartEngine });
 
-  const { audioInputDevices, inputDeviceId, setInputDeviceId } = useAudioInput();
+  // One button slot (and so one DOM node) for all three states: the keyboard focus can
+  // stay on it while the engine goes from stopped to starting to running and back
+  const engineButton = (() => {
+    if (isEngineRunning) {
+      return (
+        <Button
+          ref={engineButtonRef}
+          variant="secondary"
+          size="sm"
+          onClick={onStopEngine}
+          aria-label="Stop audio and release the microphone"
+        >
+          <Square className="h-3 w-3" />
+          Stop
+        </Button>
+      );
+    }
+    if (isEngineStarting) {
+      return (
+        <Button ref={engineButtonRef} variant="accent" size="sm" disabled aria-label="Starting audio">
+          <LoaderCircle className="h-3.5 w-3.5 motion-safe:animate-spin" />
+          Starting…
+        </Button>
+      );
+    }
+    return (
+      <Button
+        ref={engineButtonRef}
+        variant="accent"
+        size="sm"
+        onClick={handleStartEngine}
+        aria-label="Start audio"
+      >
+        <Guitar className="h-3.5 w-3.5" />
+        Start Audio
+      </Button>
+    );
+  })();
 
-  const engineButton = isEngineRunning ? (
-    <span className="flex items-center gap-1.5 text-xs text-status-success">
-      <span className="h-2 w-2 rounded-full bg-status-success animate-pulse" />
+  const liveIndicator = isEngineRunning ? (
+    <>
+      <span className="h-2 w-2 rounded-full bg-status-success motion-safe:animate-pulse" />
       Live
-    </span>
+    </>
+  ) : null;
+
+  const monitorIcon = isMonitoring ? (
+    <Volume2 className="h-3.5 w-3.5" aria-hidden="true" />
   ) : (
-    <button
-      type="button"
-      onClick={onStartEngine}
-      className={mergeClassNames(
-        'flex items-center gap-1.5',
-        'rounded-lg px-3 py-1.5',
-        'bg-gradient-to-r from-accent-primary to-accent-primary-hover',
-        'text-text-inverse text-xs font-medium',
-        'transition-all duration-150 ease-out',
-        'hover:brightness-110 hover:shadow-(--shadow-glow-amber)',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary',
-      )}
-    >
-      <Guitar className="h-3.5 w-3.5" />
-      Start Audio
-    </button>
+    <VolumeX className="h-3.5 w-3.5" aria-hidden="true" />
   );
 
   return (
@@ -56,48 +93,30 @@ export function Header({ onStartEngine, isEngineRunning }: Props) {
       )}
     >
       <div className="flex shrink-0 items-center gap-3">
-        <Guitar className="h-5 w-5 text-accent-primary" />
-        <span className="font-pixel text-xs tracking-tight text-accent-primary">MultiFX</span>
+        <Guitar className="h-5 w-5 text-accent-primary" aria-hidden="true" />
+        <h1 className="font-pixel text-xs tracking-tight text-accent-primary">MultiFX</h1>
         {engineButton}
+        {/* Always mounted, so that screen readers announce "Live" when it appears */}
+        <span role="status" className="flex items-center gap-1.5 text-xs text-status-success">
+          {liveIndicator}
+        </span>
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Mic className="h-3.5 w-3.5 text-text-muted" />
-          <select
-            value={inputDeviceId}
-            onChange={(e) => setInputDeviceId(e.target.value)}
-            aria-label="Select audio input device"
-            className={mergeClassNames(
-              'rounded-md px-2 py-1',
-              'bg-bg-elevated border border-border-default',
-              'text-xs text-text-primary',
-              'focus-visible:outline-2 focus-visible:outline-accent-primary',
-            )}
-          >
-            {audioInputDevices.map((device) => (
-              <option key={device.deviceId} value={device.deviceId}>
-                {device.label || `Input ${device.deviceId.slice(0, 8)}`}
-              </option>
-            ))}
-          </select>
-        </div>
+        <InputDeviceSelect />
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-text-muted">Monitor</span>
+        <div className="flex items-center gap-2 text-xs text-text-muted">
+          {monitorIcon}
+          Monitor
           <Toggle
             checked={isMonitoring}
             onCheckedChange={setMonitoring}
-            aria-label="Toggle audio monitoring"
+            aria-label="Monitor: play the processed sound through the speakers"
           />
         </div>
 
-        <IconButton
-          aria-label="Toggle tuner"
-          onClick={() => setTunerActive(!isTunerActive)}
-          className={isTunerActive ? 'text-accent-primary' : undefined}
-        >
-          <Activity className="h-4 w-4" />
+        <IconButton aria-label="Tuner" isActive={isTunerActive} onClick={handleToggleTuner}>
+          <Activity />
         </IconButton>
       </div>
     </header>

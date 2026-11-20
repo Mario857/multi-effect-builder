@@ -1,127 +1,123 @@
 'use client';
 
-import { X, Plus } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Plus, X } from 'lucide-react';
 import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
+import { ChipButton } from '@/components/shared/ChipButton';
 import { IconButton } from '@/components/shared/IconButton';
-import { PEDAL_EFFECT_TYPES, EFFECT_DEFINITIONS } from '@/lib/constants/effects';
-import { CATEGORY_COLORS, CATEGORY_BG_COLORS, CATEGORY_LABELS } from '@/lib/constants/ui';
-import { usePedalboardStore } from '@/lib/store/pedalboardStore';
-import { EFFECT_CATEGORY } from '@/types/audio';
-import type { PedalEffectType, EffectCategory } from '@/types/audio';
-import { useState, useMemo } from 'react';
+import {
+  ACCENT_SOFT_CLASSES,
+  FOCUS_RING_CLASSES,
+  INTERACTIVE_TRANSITION_CLASSES,
+} from '@/lib/constants/ui';
+import { useEffectRack } from '@/hooks/useEffectRack';
 
-const FILTER_CATEGORIES: readonly EffectCategory[] = [
-  EFFECT_CATEGORY.DISTORTION,
-  EFFECT_CATEGORY.DELAY,
-  EFFECT_CATEGORY.REVERB,
-  EFFECT_CATEGORY.MODULATION,
-  EFFECT_CATEGORY.DYNAMICS,
-  EFFECT_CATEGORY.EQ,
-];
+/**
+ * Side panel listing the effects that can be added to the chain, filterable by category.
+ * It is a modal dialog (Radix Dialog): focus is trapped inside while it is open, Escape
+ * or a click outside closes it, and focus then returns to the control that opened it.
+ * @param isOpen - Whether the rack is shown
+ * @param onClose - Called when the rack should close
+ */
+export function EffectRack({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const {
+    isShowingAll,
+    handleShowAll,
+    categoryFilters,
+    effectOptions,
+    handleOpenChange,
+    handleOpenAutoFocus,
+    handleCloseAutoFocus,
+  } = useEffectRack(onClose);
 
-interface Props {
-  isOpen: boolean;
-  onClose: () => void;
-}
+  const categoryChips = categoryFilters.map((filter) => (
+    <ChipButton
+      key={filter.category}
+      shape="pill"
+      variant="soft"
+      accent={filter.category}
+      isActive={filter.isActive}
+      onClick={filter.handleSelect}
+      aria-label={filter.ariaLabel}
+    >
+      {filter.label}
+    </ChipButton>
+  ));
 
-export function EffectRack({ isOpen, onClose }: Props) {
-  const { addEffect } = usePedalboardStore();
-  const [activeFilter, setActiveFilter] = useState<EffectCategory | null>(null);
-
-  const filteredEffects = useMemo(() => {
-    const allEffects = PEDAL_EFFECT_TYPES.map((type) => EFFECT_DEFINITIONS[type]);
-    if (!activeFilter) return allEffects;
-    return allEffects.filter((def) => def.category === activeFilter);
-  }, [activeFilter]);
-
-  if (!isOpen) return null;
-
-  const handleAdd = (type: PedalEffectType) => {
-    addEffect(type);
-    onClose();
-  };
-
-  return (
-    <div
+  const effectButtons = effectOptions.map((option) => (
+    <button
+      key={option.type}
+      type="button"
+      onClick={option.handleAdd}
+      aria-label={option.ariaLabel}
       className={mergeClassNames(
-        'fixed inset-y-0 right-0 z-50 w-80',
-        'flex flex-col',
-        'border-l border-glass-border bg-bg-secondary/90 backdrop-blur-xl',
-        'shadow-2xl',
+        'flex shrink-0 items-center gap-3 rounded-lg p-3',
+        'border border-border-default text-left',
+        'hover:border-accent-primary hover:bg-bg-hover',
+        INTERACTIVE_TRANSITION_CLASSES,
+        FOCUS_RING_CLASSES,
       )}
     >
-      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-        <span className="text-sm font-bold">Effect Rack</span>
-        <IconButton aria-label="Close effect rack" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </IconButton>
-      </div>
+      <span
+        className={mergeClassNames(
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+          ACCENT_SOFT_CLASSES[option.category],
+        )}
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <span className="flex flex-col">
+        <span className="text-sm font-medium text-text-primary">{option.name}</span>
+        <span className="text-xs text-text-muted">{option.description}</span>
+      </span>
+    </button>
+  ));
 
-      <div className="flex flex-wrap gap-1 border-b border-border-subtle px-4 py-2">
-        <button
-          type="button"
-          onClick={() => setActiveFilter(null)}
+  return (
+    <Dialog.Root open={isOpen} onOpenChange={handleOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-bg-primary/60" />
+        <Dialog.Content
+          onOpenAutoFocus={handleOpenAutoFocus}
+          onCloseAutoFocus={handleCloseAutoFocus}
           className={mergeClassNames(
-            'rounded-full px-2.5 py-1 text-xs font-medium',
-            'transition-all duration-150 ease-out',
-            !activeFilter
-              ? 'bg-accent-primary text-text-inverse'
-              : 'bg-bg-elevated text-text-secondary hover:text-text-primary',
+            'fixed inset-y-0 right-0 z-50 w-80',
+            'flex flex-col',
+            'border-l border-glass-border bg-bg-secondary/90 backdrop-blur-xl',
+            'shadow-2xl',
           )}
         >
-          All
-        </button>
-        {FILTER_CATEGORIES.map((category) => (
-          <button
-            key={category}
-            type="button"
-            onClick={() => setActiveFilter(category)}
-            className={mergeClassNames(
-              'rounded-full px-2.5 py-1 text-xs font-medium',
-              'transition-all duration-150 ease-out',
-              activeFilter === category
-                ? `${CATEGORY_BG_COLORS[category]} ${CATEGORY_COLORS[category]}`
-                : 'bg-bg-elevated text-text-secondary hover:text-text-primary',
-            )}
-          >
-            {CATEGORY_LABELS[category]}
-          </button>
-        ))}
-      </div>
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+            <Dialog.Title className="text-sm font-bold">Effect Rack</Dialog.Title>
+            <IconButton aria-label="Close effect rack" onClick={onClose}>
+              <X />
+            </IconButton>
+          </div>
+          <Dialog.Description className="sr-only">
+            Choose an effect to add to the end of the signal chain.
+          </Dialog.Description>
 
-      <div className="flex-1 overflow-y-auto p-3 scrollbar-thin">
-        <div className="flex flex-col gap-2">
-          {filteredEffects.map((def) => (
-            <button
-              key={def.type}
-              type="button"
-              onClick={() => handleAdd(def.type)}
-              aria-label={`Add ${def.name} to chain`}
-              className={mergeClassNames(
-                'flex items-center gap-3 rounded-lg p-3',
-                'border border-border-default',
-                'transition-all duration-150 ease-out',
-                'hover:border-accent-primary hover:bg-bg-hover',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary',
-                'text-left',
-              )}
+          <div
+            role="group"
+            aria-label="Filter effects by category"
+            className="flex flex-wrap gap-1 border-b border-border-subtle px-4 py-2"
+          >
+            <ChipButton
+              shape="pill"
+              isActive={isShowingAll}
+              onClick={handleShowAll}
+              aria-label="Show all effects"
             >
-              <div
-                className={mergeClassNames(
-                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                  CATEGORY_BG_COLORS[def.category],
-                )}
-              >
-                <Plus className={mergeClassNames('h-4 w-4 shrink-0', CATEGORY_COLORS[def.category])} />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-text-primary">{def.name}</span>
-                <span className="text-xs text-text-muted">{def.description}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
+              All
+            </ChipButton>
+            {categoryChips}
+          </div>
+
+          <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-3 scrollbar-thin">
+            {effectButtons}
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

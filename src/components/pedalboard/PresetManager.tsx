@@ -1,119 +1,93 @@
 'use client';
 
-import { Save, Trash2, FolderOpen } from 'lucide-react';
-import { useState } from 'react';
+import { FolderOpen, Save, Trash2 } from 'lucide-react';
 import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
 import { Button } from '@/components/shared/Button';
+import { Card } from '@/components/shared/Card';
+import { ChipButton } from '@/components/shared/ChipButton';
 import { IconButton } from '@/components/shared/IconButton';
-import { usePedalboardStore } from '@/lib/store/pedalboardStore';
+import { FIELD_CLASSES, FOCUS_RING_CLASSES, PRESET_NAME_MAX_LENGTH } from '@/lib/constants/ui';
+import { usePresetManager } from '@/hooks/usePresetManager';
 
-const MAX_PRESET_NAME_LENGTH = 30;
-
+/**
+ * Preset section: loads and deletes presets and saves the current board as a new one.
+ * The chip of the active preset is filled while the board still matches it and only
+ * tinted, with a `*` after its name, once the board has been edited.
+ */
 export function PresetManager() {
-  const { presets, activePresetId, savePreset, loadPreset, deletePreset } = usePedalboardStore();
-  const [isNaming, setIsNaming] = useState(false);
-  const [presetName, setPresetName] = useState('');
-
-  const handleSave = () => {
-    if (!presetName.trim()) return;
-    savePreset(presetName.trim());
-    setPresetName('');
-    setIsNaming(false);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSave();
-    if (e.key === 'Escape') setIsNaming(false);
-  };
+  const {
+    presetItems,
+    isNaming,
+    presetName,
+    canSave,
+    nameInputRef,
+    startNamingButtonRef,
+    handleStartNaming,
+    handleCancelNaming,
+    handleNameChange,
+    handleNameKeyDown,
+    handleSubmit,
+  } = usePresetManager();
 
   const saveForm = isNaming ? (
-    <div className="flex items-center gap-2">
+    <form onSubmit={handleSubmit} className="flex items-center gap-2">
       <input
+        ref={nameInputRef}
         type="text"
         value={presetName}
-        onChange={(e) => setPresetName(e.target.value.slice(0, MAX_PRESET_NAME_LENGTH))}
-        onKeyDown={handleKeyDown}
+        maxLength={PRESET_NAME_MAX_LENGTH}
+        onChange={handleNameChange}
+        onKeyDown={handleNameKeyDown}
         placeholder="Preset name..."
-        autoFocus
         aria-label="Preset name"
-        className={mergeClassNames(
-          'rounded-md px-2 py-1',
-          'bg-bg-elevated border border-border-default',
-          'text-xs text-text-primary',
-          'placeholder:text-text-muted',
-          'focus-visible:outline-2 focus-visible:outline-accent-primary',
-        )}
+        className={mergeClassNames(FIELD_CLASSES, 'placeholder:text-text-muted', FOCUS_RING_CLASSES)}
       />
-      <Button size="sm" onClick={handleSave} aria-label="Save preset">
+      <Button type="submit" size="sm" disabled={!canSave} aria-label="Save preset">
         Save
       </Button>
-      <Button size="sm" variant="ghost" onClick={() => setIsNaming(false)} aria-label="Cancel">
+      <Button size="sm" variant="ghost" onClick={handleCancelNaming} aria-label="Cancel saving preset">
         Cancel
       </Button>
-    </div>
+    </form>
   ) : (
-    <Button size="sm" variant="secondary" onClick={() => setIsNaming(true)} aria-label="Save current chain as preset">
+    <Button
+      ref={startNamingButtonRef}
+      size="sm"
+      variant="secondary"
+      onClick={handleStartNaming}
+      aria-label="Save preset: save the current chain as a preset"
+    >
       <Save className="h-3.5 w-3.5" />
       Save Preset
     </Button>
   );
 
-  const hasPresets = presets.length > 0;
+  const presetChips = presetItems.map((item) => {
+    const deleteButton = item.canDelete ? (
+      <IconButton aria-label={item.deleteAriaLabel} size="sm" onClick={item.handleDelete}>
+        <Trash2 />
+      </IconButton>
+    ) : null;
 
-  const presetList = hasPresets ? (
-    <div className="flex flex-wrap gap-1.5">
-      {presets.map((preset) => {
-        const isActive = preset.id === activePresetId;
-        return (
-          <div key={preset.id} className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => loadPreset(preset.id)}
-              aria-label={`Load preset: ${preset.name}`}
-              className={mergeClassNames(
-                'flex items-center gap-1.5 rounded-md px-2.5 py-1',
-                'text-xs font-medium',
-                'transition-all duration-150 ease-out',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary',
-                isActive
-                  ? 'bg-accent-primary text-text-inverse'
-                  : 'bg-bg-elevated text-text-secondary hover:text-text-primary',
-              )}
-            >
-              <FolderOpen className="h-3 w-3" />
-              {preset.name}
-            </button>
-            {!preset.isFactory && (
-              <IconButton
-                aria-label={`Delete preset: ${preset.name}`}
-                size="sm"
-                onClick={() => deletePreset(preset.id)}
-              >
-                <Trash2 className="h-3 w-3" />
-              </IconButton>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  ) : (
-    <span className="text-xs text-text-muted">No saved presets</span>
-  );
+    return (
+      <div key={item.id} className="flex items-center gap-0.5">
+        <ChipButton
+          isActive={item.isActive}
+          variant={item.chipVariant}
+          icon={<FolderOpen />}
+          onClick={item.handleLoad}
+          aria-label={item.loadAriaLabel}
+        >
+          {item.label}
+        </ChipButton>
+        {deleteButton}
+      </div>
+    );
+  });
 
   return (
-    <div
-      className={mergeClassNames(
-        'flex flex-col gap-3 rounded-xl p-4',
-        'glass-card card-highlight',
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-wider text-text-muted">
-          Presets
-        </span>
-        {saveForm}
-      </div>
-      {presetList}
-    </div>
+    <Card variant="glass" padding="md" title="Presets" action={saveForm}>
+      <div className="flex flex-wrap gap-1.5">{presetChips}</div>
+    </Card>
   );
 }

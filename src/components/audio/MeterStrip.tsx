@@ -3,29 +3,27 @@
 import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
 import { VuMeter } from '@/components/shared/VuMeter';
 import { Knob } from '@/components/shared/Knob';
-import { useAudioStore } from '@/lib/store/audioStore';
-import { useMeterStore } from '@/lib/store/meterStore';
+import {
+  MASTER_VOLUME_DEFAULT,
+  MASTER_VOLUME_MAX,
+  MASTER_VOLUME_MIN,
+} from '@/lib/constants/audio';
+import { LEVEL_METER_HEIGHT, LEVEL_METER_WIDTH } from '@/lib/constants/ui';
+import { useMeterStrip } from '@/hooks/useMeterStrip';
 
-const INPUT_LEVEL_SCALE = 5;
-const DB_FLOOR = -60;
+// Wide enough for the longest readout ("-inf dB") on one line
+const DB_READOUT_CLASSES = 'w-14 whitespace-nowrap font-mono text-xs text-text-muted';
 
-function levelToDb(level: number): number {
-  if (level <= 0) return DB_FLOOR;
-  const db = 20 * Math.log10(level);
-  return Math.max(DB_FLOOR, Math.round(db));
-}
-
+/** Input and output level meters with their dB readouts, and the master volume knob between them. */
 export function MeterStrip() {
-  const inputLevel = useMeterStore((state) => state.inputLevel);
-  const outputLevel = useMeterStore((state) => state.outputLevel);
-  const masterVolume = useAudioStore((state) => state.masterVolume);
-  const setMasterVolume = useAudioStore((state) => state.setMasterVolume);
-
-  const inputDb = levelToDb(inputLevel);
-  const outputDb = levelToDb(outputLevel);
-
-  const inputDbLabel = inputDb <= DB_FLOOR ? '-inf' : `${inputDb}`;
-  const outputDbLabel = outputDb <= DB_FLOOR ? '-inf' : `${outputDb}`;
+  const {
+    inputMeterLevel,
+    outputMeterLevel,
+    inputDbLabel,
+    outputDbLabel,
+    masterVolume,
+    setMasterVolume,
+  } = useMeterStrip();
 
   return (
     <div
@@ -37,35 +35,31 @@ export function MeterStrip() {
       <div className="flex items-center gap-3">
         <span className="text-xs font-bold uppercase text-text-muted">In</span>
         <VuMeter
-          level={inputLevel * INPUT_LEVEL_SCALE}
-          width={120}
-          height={10}
+          level={inputMeterLevel}
+          width={LEVEL_METER_WIDTH}
+          height={LEVEL_METER_HEIGHT}
           orientation="horizontal"
           aria-label="Input level meter"
         />
-        <span className="w-10 text-right font-mono text-xs text-text-muted">
-          {inputDbLabel}dB
-        </span>
+        <span className={mergeClassNames(DB_READOUT_CLASSES, 'text-right')}>{inputDbLabel}</span>
       </div>
 
       <Knob
         value={masterVolume}
-        min={0}
-        max={1}
-        step={0.01}
+        min={MASTER_VOLUME_MIN}
+        max={MASTER_VOLUME_MAX}
+        defaultValue={MASTER_VOLUME_DEFAULT}
         onChange={setMasterVolume}
         label="Master"
         size="sm"
       />
 
       <div className="flex items-center gap-3">
-        <span className="w-10 text-left font-mono text-xs text-text-muted">
-          {outputDbLabel}dB
-        </span>
+        <span className={mergeClassNames(DB_READOUT_CLASSES, 'text-left')}>{outputDbLabel}</span>
         <VuMeter
-          level={outputLevel * INPUT_LEVEL_SCALE}
-          width={120}
-          height={10}
+          level={outputMeterLevel}
+          width={LEVEL_METER_WIDTH}
+          height={LEVEL_METER_HEIGHT}
           orientation="horizontal"
           aria-label="Output level meter"
         />

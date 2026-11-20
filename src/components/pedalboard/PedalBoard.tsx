@@ -1,102 +1,47 @@
 'use client';
 
-import { Plus, ArrowRight } from 'lucide-react';
+import { Fragment } from 'react';
+import { ArrowRight, Plus } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
 import { EffectPedal } from '@/components/pedalboard/EffectPedal';
+import { Button } from '@/components/shared/Button';
 import { usePedalboardStore } from '@/lib/store/pedalboardStore';
-import { useCallback, useRef } from 'react';
 
-interface Props {
-  onOpenEffectRack: () => void;
-}
-
-export function PedalBoard({ onOpenEffectRack }: Props) {
-  const {
-    effects,
-    selectedEffectId,
-    selectEffect,
-    toggleBypass,
-    removeEffect,
-    setEffectParameter,
-    moveEffect,
-  } = usePedalboardStore();
-
-  const dragIndexRef = useRef<number | null>(null);
-
-  const handleDragStart = useCallback((index: number) => {
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    moveEffect(dragIndexRef.current, index);
-    dragIndexRef.current = index;
-  }, [moveEffect]);
-
-  const handleDragEnd = useCallback(() => {
-    dragIndexRef.current = null;
-  }, []);
-
-  const hasEffects = effects.length > 0;
-
-  const signalFlowLabel = (
-    <div className="flex items-center gap-1 text-text-muted">
-      <ArrowRight className="h-4 w-4" />
-    </div>
+/**
+ * The signal chain: the pedals in order, from the amp to the output, and the slot that
+ * opens the effect rack.
+ *
+ * The board subscribes to the order of the pedals only; each pedal subscribes to its own
+ * effect, so turning a knob or bypassing a pedal does not re-render the rest of the chain.
+ * @param onOpenEffectRack - Opens the effect rack to add an effect
+ */
+export function PedalBoard({ onOpenEffectRack }: { onOpenEffectRack: () => void }) {
+  const effectIds = usePedalboardStore(
+    useShallow((state) => state.effects.map((effect) => effect.id)),
   );
 
-  const addButton = (
-    <button
-      type="button"
-      onClick={onOpenEffectRack}
-      aria-label="Add effect to chain"
-      className={mergeClassNames(
-        'flex shrink-0 flex-col items-center justify-center gap-2',
-        'h-40 w-52 rounded-xl',
-        'border-2 border-dashed border-border-default',
-        'text-text-muted',
-        'transition-all duration-150 ease-out',
-        'hover:border-accent-primary hover:text-accent-primary',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary',
-      )}
-    >
-      <Plus className="h-6 w-6" />
-      <span className="text-xs font-medium">Add Effect</span>
-    </button>
+  const lastIndex = effectIds.length - 1;
+  const hasEffects = effectIds.length > 0;
+
+  const signalFlowArrow = (
+    <ArrowRight className="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
   );
 
-  const emptyState = (
+  // Every pedal is followed by an arrow: to the next pedal or, after the last, to the add slot
+  const effectChain = effectIds.map((effectId, index) => (
+    <Fragment key={effectId}>
+      <EffectPedal effectId={effectId} index={index} isLast={index === lastIndex} />
+      {signalFlowArrow}
+    </Fragment>
+  ));
+
+  const emptyState = hasEffects ? null : (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
       <p className="text-sm text-text-muted">No effects in the chain.</p>
       <p className="text-xs text-text-muted">Click &quot;Add Effect&quot; to get started.</p>
     </div>
   );
-
-  const effectChain = hasEffects ? (
-    effects.map((effect, index) => (
-      <div key={effect.id} className="flex items-center gap-3">
-        {index > 0 && signalFlowLabel}
-        <div
-          draggable
-          onDragStart={() => handleDragStart(index)}
-          onDragOver={(e) => handleDragOver(e, index)}
-          onDragEnd={handleDragEnd}
-        >
-          <EffectPedal
-            effect={effect}
-            isSelected={selectedEffectId === effect.id}
-            onSelect={() => selectEffect(effect.id)}
-            onToggleBypass={() => toggleBypass(effect.id)}
-            onRemove={() => removeEffect(effect.id)}
-            onParameterChange={(paramId, value) =>
-              setEffectParameter(effect.id, paramId, value)
-            }
-          />
-        </div>
-      </div>
-    ))
-  ) : null;
 
   return (
     <div
@@ -105,20 +50,22 @@ export function PedalBoard({ onOpenEffectRack }: Props) {
         'scrollbar-thin',
       )}
     >
-      <div className="flex items-center gap-1 self-center text-text-muted">
-        <span className="text-xs font-mono">AMP</span>
-        <ArrowRight className="h-3.5 w-3.5" />
+      <div className="flex shrink-0 items-center gap-1 text-text-muted">
+        <span className="font-mono text-xs">AMP</span>
+        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
       </div>
 
       {effectChain}
-      {!hasEffects && emptyState}
+      {emptyState}
 
-      {hasEffects && signalFlowLabel}
-      {addButton}
+      <Button variant="dashed" size="tile" onClick={onOpenEffectRack} aria-label="Add effect to chain">
+        <Plus className="h-6 w-6" />
+        Add Effect
+      </Button>
 
-      <div className="flex items-center gap-1 self-center text-text-muted">
-        <ArrowRight className="h-3.5 w-3.5" />
-        <span className="text-xs font-mono">OUT</span>
+      <div className="flex shrink-0 items-center gap-1 text-text-muted">
+        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="font-mono text-xs">OUT</span>
       </div>
     </div>
   );

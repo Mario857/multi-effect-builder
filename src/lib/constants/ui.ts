@@ -1,27 +1,5 @@
-import { EFFECT_CATEGORY } from '@/types/audio';
-import type { EffectCategory } from '@/types/audio';
-
-export const CATEGORY_COLORS: Record<EffectCategory, string> = {
-  [EFFECT_CATEGORY.DISTORTION]: 'text-fx-distortion border-fx-distortion',
-  [EFFECT_CATEGORY.DELAY]: 'text-fx-delay border-fx-delay',
-  [EFFECT_CATEGORY.REVERB]: 'text-fx-reverb border-fx-reverb',
-  [EFFECT_CATEGORY.MODULATION]: 'text-fx-modulation border-fx-modulation',
-  [EFFECT_CATEGORY.DYNAMICS]: 'text-fx-dynamics border-fx-dynamics',
-  [EFFECT_CATEGORY.EQ]: 'text-fx-eq border-fx-eq',
-  [EFFECT_CATEGORY.AMP]: 'text-fx-amp border-fx-amp',
-  [EFFECT_CATEGORY.UTILITY]: 'text-fx-utility border-fx-utility',
-};
-
-export const CATEGORY_BG_COLORS: Record<EffectCategory, string> = {
-  [EFFECT_CATEGORY.DISTORTION]: 'bg-fx-distortion/10',
-  [EFFECT_CATEGORY.DELAY]: 'bg-fx-delay/10',
-  [EFFECT_CATEGORY.REVERB]: 'bg-fx-reverb/10',
-  [EFFECT_CATEGORY.MODULATION]: 'bg-fx-modulation/10',
-  [EFFECT_CATEGORY.DYNAMICS]: 'bg-fx-dynamics/10',
-  [EFFECT_CATEGORY.EQ]: 'bg-fx-eq/10',
-  [EFFECT_CATEGORY.AMP]: 'bg-fx-amp/10',
-  [EFFECT_CATEGORY.UTILITY]: 'bg-fx-utility/10',
-};
+import { EFFECT_CATEGORY, EFFECT_TYPE } from '@/types/audio';
+import type { AmpType, EffectCategory } from '@/types/audio';
 
 export const CATEGORY_LABELS: Record<EffectCategory, string> = {
   [EFFECT_CATEGORY.DISTORTION]: 'Distortion',
@@ -92,6 +70,19 @@ export const ACCENT_TEXT_CLASSES: Record<AccentColor, string> = {
   [EFFECT_CATEGORY.UTILITY]: 'text-fx-utility',
 };
 
+/** Accent border colour only — e.g. the outline of the selected pedal. */
+export const ACCENT_BORDER_CLASSES: Record<AccentColor, string> = {
+  primary: 'border-accent-primary',
+  [EFFECT_CATEGORY.DISTORTION]: 'border-fx-distortion',
+  [EFFECT_CATEGORY.DELAY]: 'border-fx-delay',
+  [EFFECT_CATEGORY.REVERB]: 'border-fx-reverb',
+  [EFFECT_CATEGORY.MODULATION]: 'border-fx-modulation',
+  [EFFECT_CATEGORY.DYNAMICS]: 'border-fx-dynamics',
+  [EFFECT_CATEGORY.EQ]: 'border-fx-eq',
+  [EFFECT_CATEGORY.AMP]: 'border-fx-amp',
+  [EFFECT_CATEGORY.UTILITY]: 'border-fx-utility',
+};
+
 /** Visible keyboard focus ring shared by every interactive element. */
 export const FOCUS_RING_CLASSES =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary';
@@ -105,7 +96,11 @@ export const DISABLED_CLASSES = 'disabled:opacity-50 disabled:pointer-events-non
 /** Typography of a section / card title. */
 export const SECTION_TITLE_CLASSES = 'text-xs font-bold uppercase tracking-wider';
 
-/** `KeyboardEvent.key` values handled by slider-like controls. */
+/** Shared look of small form fields (text inputs, selects). */
+export const FIELD_CLASSES =
+  'rounded-md border border-border-default bg-bg-elevated px-2 py-1 text-xs text-text-primary';
+
+/** `KeyboardEvent.key` values handled by slider-like controls and forms. */
 export const KEYBOARD_KEY = {
   ARROW_UP: 'ArrowUp',
   ARROW_DOWN: 'ArrowDown',
@@ -115,6 +110,7 @@ export const KEYBOARD_KEY = {
   PAGE_DOWN: 'PageDown',
   HOME: 'Home',
   END: 'End',
+  ESCAPE: 'Escape',
 } as const;
 
 /** Step of a knob or slider whose caller does not pass one. */
@@ -176,3 +172,57 @@ export const VU_METER_DEFAULT_HEIGHT = 80;
 
 /** Upper bound of the `aria-valuenow` a VU meter reports (percent). */
 export const VU_METER_ARIA_MAX = 100;
+
+/** Factor by which raw RMS levels are scaled up before they are drawn, so a typical guitar signal fills the meter. */
+export const LEVEL_METER_DISPLAY_GAIN = 5;
+
+/** Width in pixels of the horizontal input / output level meters. */
+export const LEVEL_METER_WIDTH = 120;
+
+/** Height in pixels of the horizontal input / output level meters. */
+export const LEVEL_METER_HEIGHT = 10;
+
+/** Lowest value the level meters' dB readouts show; a level at or below it reads as silence. */
+export const LEVEL_METER_DB_FLOOR = -60;
+
+/** dB readout of a level at or below `LEVEL_METER_DB_FLOOR`. */
+export const LEVEL_METER_SILENCE_LABEL = '-inf';
+
+/** Number of segments in the tuner's cents indicator; odd, so that one segment marks "in tune". */
+export const TUNER_INDICATOR_SEGMENTS = 21;
+
+/** Deviation in cents shown by the outermost segment of the tuner's indicator. */
+export const TUNER_CENTS_RANGE = 50;
+
+/** Number of parameters a pedal shows as knobs; the full set is in the parameter panel. */
+export const PEDAL_VISIBLE_PARAMETER_COUNT = 3;
+
+/** Longest name a user preset can be given. */
+export const PRESET_NAME_MAX_LENGTH = 30;
+
+/** Characters of a device id shown in place of the label browsers hide until microphone access is granted. */
+export const DEVICE_ID_LABEL_LENGTH = 8;
+
+/** Amp model names as shown on the amp selector chips. */
+export const AMP_SHORT_LABELS: Record<AmpType, string> = {
+  [EFFECT_TYPE.AMP_CLEAN]: 'Clean',
+  [EFFECT_TYPE.AMP_CRUNCH]: 'Crunch',
+  [EFFECT_TYPE.AMP_HIGHGAIN]: 'High Gain',
+  [EFFECT_TYPE.AMP_ACOUSTIC]: 'Acoustic',
+};
+
+/** Categories offered as filters in the effect rack, in display order. */
+export const EFFECT_RACK_FILTER_CATEGORIES: readonly EffectCategory[] = [
+  EFFECT_CATEGORY.DISTORTION,
+  EFFECT_CATEGORY.DELAY,
+  EFFECT_CATEGORY.REVERB,
+  EFFECT_CATEGORY.MODULATION,
+  EFFECT_CATEGORY.DYNAMICS,
+  EFFECT_CATEGORY.EQ,
+];
+
+/**
+ * MIME type under which a dragged pedal's id is put on the drag's DataTransfer. A private
+ * type keeps the drag from being droppable into text fields or other applications.
+ */
+export const PEDAL_DRAG_MIME_TYPE = 'application/x-multi-effect-pedal';
