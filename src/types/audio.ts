@@ -1,26 +1,10 @@
-export interface AudioDeviceInfo {
-  readonly deviceId: string;
-  readonly label: string;
-  readonly kind: MediaDeviceKind;
-}
-
-export interface AudioEngineState {
-  readonly isRunning: boolean;
-  readonly sampleRate: number;
-  readonly inputLevel: number;
-  readonly outputLevel: number;
-}
-
-export interface AudioInputConfig {
-  readonly deviceId: string;
-  readonly isMonitoring: boolean;
-  readonly masterVolume: number;
-}
-
+/** A detected pitch mapped onto the nearest equal-tempered note. */
 export interface TunerReading {
+  /** Detected fundamental in Hz, rounded to the tuner's display precision. */
   readonly frequency: number;
   readonly note: string;
   readonly octave: number;
+  /** Signed deviation from the nearest note in whole cents (-50..50). */
   readonly centsOff: number;
 }
 
@@ -76,8 +60,12 @@ export interface EffectParameterDefinition {
   readonly unit: string;
 }
 
-export interface EffectDefinition {
-  readonly type: EffectType;
+/**
+ * Static description of an effect. The type parameter ties a definition to its
+ * own effect type, so looking one up by a pedal type yields a pedal definition.
+ */
+export interface EffectDefinition<T extends EffectType = EffectType> {
+  readonly type: T;
   readonly name: string;
   readonly category: EffectCategory;
   readonly description: string;
@@ -89,19 +77,25 @@ export interface EffectParameterValue {
   readonly value: number;
 }
 
+/** One pedal on the board. Amp models never appear here — the amp is a separate slot. */
 export interface EffectInstance {
   readonly id: string;
-  readonly type: EffectType;
+  readonly type: PedalEffectType;
   readonly isBypassed: boolean;
   readonly parameters: readonly EffectParameterValue[];
 }
 
-export interface Pedalboard {
-  readonly id: string;
-  readonly name: string;
-  readonly ampType: EffectType;
+/** The part of a pedalboard that determines the sound: the amp and the ordered effect chain. */
+export interface PedalboardSignalPath {
+  readonly ampType: AmpType;
   readonly ampParameters: readonly EffectParameterValue[];
   readonly effects: readonly EffectInstance[];
+}
+
+/** A named, identifiable signal path as stored inside a preset. */
+export interface Pedalboard extends PedalboardSignalPath {
+  readonly id: string;
+  readonly name: string;
 }
 
 export interface Preset {
@@ -109,4 +103,11 @@ export interface Preset {
   readonly name: string;
   readonly pedalboard: Pedalboard;
   readonly isFactory: boolean;
+}
+
+/** The slice of the pedalboard store that is written to localStorage. */
+export interface PersistedPedalboard extends PedalboardSignalPath {
+  /** User presets only — factory presets are constants and are re-added on load. */
+  readonly presets: readonly Preset[];
+  readonly activePresetId: string | null;
 }

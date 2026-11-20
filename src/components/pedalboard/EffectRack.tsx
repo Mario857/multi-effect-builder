@@ -7,7 +7,7 @@ import { PEDAL_EFFECT_TYPES, EFFECT_DEFINITIONS } from '@/lib/constants/effects'
 import { CATEGORY_COLORS, CATEGORY_BG_COLORS, CATEGORY_LABELS } from '@/lib/constants/ui';
 import { usePedalboardStore } from '@/lib/store/pedalboardStore';
 import { EFFECT_CATEGORY } from '@/types/audio';
-import type { EffectType, EffectCategory } from '@/types/audio';
+import type { PedalEffectType, EffectCategory } from '@/types/audio';
 import { useState, useMemo } from 'react';
 
 const FILTER_CATEGORIES: readonly EffectCategory[] = [
@@ -36,7 +36,7 @@ export function EffectRack({ isOpen, onClose }: Props) {
 
   if (!isOpen) return null;
 
-  const handleAdd = (type: EffectType) => {
+  const handleAdd = (type: PedalEffectType) => {
     addEffect(type);
     onClose();
   };

@@ -15,13 +15,12 @@ export default function HomePage() {
     isEngineRunning,
     isTunerActive,
     isEffectRackOpen,
-    tunerReading,
     handleStartEngine,
     openEffectRack,
     closeEffectRack,
   } = usePedalboardPage();
 
-  const tunerSection = isTunerActive ? <Tuner reading={tunerReading} /> : null;
+  const tunerSection = isTunerActive ? <Tuner /> : null;
 
   return (
     <div className="flex min-h-screen flex-col bg-bg-primary">

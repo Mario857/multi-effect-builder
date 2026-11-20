@@ -1,121 +1,58 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import type { TunerReading } from '@/types/audio';
+import { getInputAnalyser } from '@/lib/audio/engineController';
+import { TUNER_UPDATE_INTERVAL_MS } from '@/lib/constants/audio';
 import {
-  NOTE_NAMES,
-  TUNER_REFERENCE_A4,
-  TUNER_MIN_FREQUENCY,
-  TUNER_MAX_FREQUENCY,
-} from '@/lib/constants/audio';
+  detectPitch,
+  frequencyToTunerReading,
+  isSameTunerReading,
+} from '@/lib/helpers/pitchDetection';
 import { useAudioStore } from '@/lib/store/audioStore';
 
-const TUNER_UPDATE_INTERVAL_MS = 50;
-const NOTES_PER_OCTAVE = 12;
-const AUTOCORRELATION_THRESHOLD = 0.9;
+/** The tuner's current output. */
+export interface TunerState {
+  /** The detected note, or null when the tuner is off, the engine is stopped or no pitch is detected. */
+  readonly reading: TunerReading | null;
+}
 
 /**
- * Detects pitch using autocorrelation on time-domain audio data.
+ * Runs pitch detection on the engine's input while the engine is running and
+ * the tuner is switched on. Call it from the component that displays the
+ * reading — readings update many times per second and only that component
+ * should re-render.
+ * @returns The current tuner reading
  */
-function detectPitch(buffer: Float32Array, sampleRate: number): number {
-  let bestOffset = -1;
-  let bestCorrelation = 0;
-  let foundGoodCorrelation = false;
-
-  const minPeriod = Math.floor(sampleRate / TUNER_MAX_FREQUENCY);
-  const maxPeriod = Math.floor(sampleRate / TUNER_MIN_FREQUENCY);
-  const bufferLength = buffer.length;
-
-  // RMS check — skip if signal is too quiet
-  let rms = 0;
-  for (let i = 0; i < bufferLength; i++) {
-    rms += buffer[i] * buffer[i];
-  }
-  rms = Math.sqrt(rms / bufferLength);
-  if (rms < 0.01) return -1;
-
-  for (let offset = minPeriod; offset <= maxPeriod; offset++) {
-    let correlation = 0;
-    let norm1 = 0;
-    let norm2 = 0;
-
-    for (let i = 0; i < bufferLength - offset; i++) {
-      correlation += buffer[i] * buffer[i + offset];
-      norm1 += buffer[i] * buffer[i];
-      norm2 += buffer[i + offset] * buffer[i + offset];
-    }
-
-    const normalizedCorrelation = correlation / Math.sqrt(norm1 * norm2 + 1e-10);
-
-    if (normalizedCorrelation > AUTOCORRELATION_THRESHOLD && normalizedCorrelation > bestCorrelation) {
-      bestCorrelation = normalizedCorrelation;
-      bestOffset = offset;
-      foundGoodCorrelation = true;
-    } else if (foundGoodCorrelation && normalizedCorrelation < bestCorrelation * 0.8) {
-      break;
-    }
-  }
-
-  if (bestOffset === -1) return -1;
-  return sampleRate / bestOffset;
-}
-
-function frequencyToNote(frequency: number): TunerReading {
-  const semitones = NOTES_PER_OCTAVE * Math.log2(frequency / TUNER_REFERENCE_A4);
-  const roundedSemitones = Math.round(semitones);
-  const centsOff = Math.round((semitones - roundedSemitones) * 100);
-
-  // A4 is MIDI note 69, note index 9 (A) in octave 4
-  const midiNote = 69 + roundedSemitones;
-  const noteIndex = ((midiNote % NOTES_PER_OCTAVE) + NOTES_PER_OCTAVE) % NOTES_PER_OCTAVE;
-  const octave = Math.floor(midiNote / NOTES_PER_OCTAVE) - 1;
-
-  return {
-    frequency,
-    note: NOTE_NAMES[noteIndex],
-    octave,
-    centsOff,
-  };
-}
-
-export function useTuner(analyser: AnalyserNode | null) {
+export function useTuner(): TunerState {
   const [reading, setReading] = useState<TunerReading | null>(null);
-  const { isTunerActive } = useAudioStore();
-  const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isListening = useAudioStore((state) => state.isEngineRunning && state.isTunerActive);
 
-  const startTuner = useCallback(() => {
-    if (!analyser || animationRef.current) return;
+  useEffect(() => {
+    if (!isListening) return;
+
+    const analyser = getInputAnalyser();
+    if (!analyser) return;
 
     const buffer = new Float32Array(analyser.fftSize);
 
-    animationRef.current = setInterval(() => {
+    const timer = setInterval(() => {
+      // Pitch detection is the most expensive periodic work on the page — skip it when nobody can see the result
+      if (document.hidden) return;
+
       analyser.getFloatTimeDomainData(buffer);
       const frequency = detectPitch(buffer, analyser.context.sampleRate);
+      const nextReading = frequency === null ? null : frequencyToTunerReading(frequency);
 
-      if (frequency > 0) {
-        setReading(frequencyToNote(frequency));
-      } else {
-        setReading(null);
-      }
+      // Keeping the previous object when nothing visible changed lets React skip the re-render
+      setReading((previous) => (isSameTunerReading(previous, nextReading) ? previous : nextReading));
     }, TUNER_UPDATE_INTERVAL_MS);
-  }, [analyser]);
 
-  const stopTuner = useCallback(() => {
-    if (animationRef.current) {
-      clearInterval(animationRef.current);
-      animationRef.current = null;
-    }
-    setReading(null);
-  }, []);
+    return () => {
+      clearInterval(timer);
+      setReading(null);
+    };
+  }, [isListening]);
 
-  useEffect(() => {
-    if (isTunerActive && analyser) {
-      startTuner();
-    } else {
-      stopTuner();
-    }
-    return () => stopTuner();
-  }, [isTunerActive, analyser, startTuner, stopTuner]);
-
-  return { reading, isTunerActive };
+  return { reading };
 }

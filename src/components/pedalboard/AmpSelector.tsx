@@ -4,7 +4,6 @@ import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
 import { Knob } from '@/components/shared/Knob';
 import { EFFECT_DEFINITIONS, AMP_TYPES } from '@/lib/constants/effects';
 import { usePedalboardStore } from '@/lib/store/pedalboardStore';
-import type { EffectType } from '@/types/audio';
 
 export function AmpSelector() {
   const { ampType, ampParameters, setAmpType, setAmpParameter } = usePedalboardStore();
@@ -31,7 +30,7 @@ export function AmpSelector() {
               <button
                 key={type}
                 type="button"
-                onClick={() => setAmpType(type as EffectType)}
+                onClick={() => setAmpType(type)}
                 aria-label={`Select ${def.name}`}
                 className={mergeClassNames(
                   'rounded-md px-2 py-1 text-xs font-medium',

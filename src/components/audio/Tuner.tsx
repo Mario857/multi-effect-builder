@@ -2,17 +2,15 @@
 
 import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
 import { CENTS_THRESHOLD_IN_TUNE } from '@/lib/constants/audio';
-import type { TunerReading } from '@/types/audio';
+import { useTuner } from '@/hooks/useTuner';
 
 const CENTS_RANGE = 50;
 const INDICATOR_SEGMENTS = 21;
 const CENTER_INDEX = Math.floor(INDICATOR_SEGMENTS / 2);
 
-interface Props {
-  reading: TunerReading | null;
-}
-
-export function Tuner({ reading }: Props) {
+export function Tuner() {
+  // The tuner owns its readings so that their ~20 updates per second re-render only this component
+  const { reading } = useTuner();
   const isInTune = reading ? Math.abs(reading.centsOff) <= CENTS_THRESHOLD_IN_TUNE : false;
 
   const noSignalContent = (

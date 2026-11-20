@@ -1,7 +1,7 @@
-import type { EffectDefinition } from '@/types/audio';
+import type { AmpType, EffectDefinition, EffectType, PedalEffectType } from '@/types/audio';
 import { EFFECT_CATEGORY, EFFECT_TYPE } from '@/types/audio';
 
-export const DISTORTION_DEFINITION: EffectDefinition = {
+export const DISTORTION_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.DISTORTION> = {
   type: EFFECT_TYPE.DISTORTION,
   name: 'Distortion',
   category: EFFECT_CATEGORY.DISTORTION,
@@ -14,7 +14,7 @@ export const DISTORTION_DEFINITION: EffectDefinition = {
   ],
 };
 
-export const DELAY_DEFINITION: EffectDefinition = {
+export const DELAY_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.DELAY> = {
   type: EFFECT_TYPE.DELAY,
   name: 'Delay',
   category: EFFECT_CATEGORY.DELAY,
@@ -27,7 +27,7 @@ export const DELAY_DEFINITION: EffectDefinition = {
   ],
 };
 
-export const REVERB_DEFINITION: EffectDefinition = {
+export const REVERB_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.REVERB> = {
   type: EFFECT_TYPE.REVERB,
   name: 'Reverb',
   category: EFFECT_CATEGORY.REVERB,
@@ -40,7 +40,7 @@ export const REVERB_DEFINITION: EffectDefinition = {
   ],
 };
 
-export const CHORUS_DEFINITION: EffectDefinition = {
+export const CHORUS_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.CHORUS> = {
   type: EFFECT_TYPE.CHORUS,
   name: 'Chorus',
   category: EFFECT_CATEGORY.MODULATION,
@@ -53,7 +53,7 @@ export const CHORUS_DEFINITION: EffectDefinition = {
   ],
 };
 
-export const COMPRESSOR_DEFINITION: EffectDefinition = {
+export const COMPRESSOR_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.COMPRESSOR> = {
   type: EFFECT_TYPE.COMPRESSOR,
   name: 'Compressor',
   category: EFFECT_CATEGORY.DYNAMICS,
@@ -67,7 +67,7 @@ export const COMPRESSOR_DEFINITION: EffectDefinition = {
   ],
 };
 
-export const EQ_DEFINITION: EffectDefinition = {
+export const EQ_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.EQ> = {
   type: EFFECT_TYPE.EQ,
   name: 'Equalizer',
   category: EFFECT_CATEGORY.EQ,
@@ -82,7 +82,7 @@ export const EQ_DEFINITION: EffectDefinition = {
   ],
 };
 
-export const TREMOLO_DEFINITION: EffectDefinition = {
+export const TREMOLO_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.TREMOLO> = {
   type: EFFECT_TYPE.TREMOLO,
   name: 'Tremolo',
   category: EFFECT_CATEGORY.MODULATION,
@@ -94,7 +94,7 @@ export const TREMOLO_DEFINITION: EffectDefinition = {
   ],
 };
 
-export const PHASER_DEFINITION: EffectDefinition = {
+export const PHASER_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.PHASER> = {
   type: EFFECT_TYPE.PHASER,
   name: 'Phaser',
   category: EFFECT_CATEGORY.MODULATION,
@@ -107,7 +107,7 @@ export const PHASER_DEFINITION: EffectDefinition = {
   ],
 };
 
-export const FUZZ_DEFINITION: EffectDefinition = {
+export const FUZZ_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.FUZZ> = {
   type: EFFECT_TYPE.FUZZ,
   name: 'Fuzz',
   category: EFFECT_CATEGORY.DISTORTION,
@@ -119,7 +119,7 @@ export const FUZZ_DEFINITION: EffectDefinition = {
   ],
 };
 
-export const NOISE_GATE_DEFINITION: EffectDefinition = {
+export const NOISE_GATE_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.NOISE_GATE> = {
   type: EFFECT_TYPE.NOISE_GATE,
   name: 'Noise Gate',
   category: EFFECT_CATEGORY.DYNAMICS,
@@ -141,7 +141,7 @@ const AMP_SHARED_PARAMETERS = [
   { id: 'sag', name: 'Sag', min: 0, max: 1, step: 0.01, defaultValue: 0.3, unit: '' },
 ] as const;
 
-export const AMP_CLEAN_DEFINITION: EffectDefinition = {
+export const AMP_CLEAN_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.AMP_CLEAN> = {
   type: EFFECT_TYPE.AMP_CLEAN,
   name: 'Clean Amp',
   category: EFFECT_CATEGORY.AMP,
@@ -149,7 +149,7 @@ export const AMP_CLEAN_DEFINITION: EffectDefinition = {
   parameters: AMP_SHARED_PARAMETERS,
 };
 
-export const AMP_CRUNCH_DEFINITION: EffectDefinition = {
+export const AMP_CRUNCH_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.AMP_CRUNCH> = {
   type: EFFECT_TYPE.AMP_CRUNCH,
   name: 'Crunch Amp',
   category: EFFECT_CATEGORY.AMP,
@@ -157,7 +157,7 @@ export const AMP_CRUNCH_DEFINITION: EffectDefinition = {
   parameters: AMP_SHARED_PARAMETERS,
 };
 
-export const AMP_HIGHGAIN_DEFINITION: EffectDefinition = {
+export const AMP_HIGHGAIN_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.AMP_HIGHGAIN> = {
   type: EFFECT_TYPE.AMP_HIGHGAIN,
   name: 'High Gain Amp',
   category: EFFECT_CATEGORY.AMP,
@@ -165,7 +165,7 @@ export const AMP_HIGHGAIN_DEFINITION: EffectDefinition = {
   parameters: AMP_SHARED_PARAMETERS,
 };
 
-export const AMP_ACOUSTIC_DEFINITION: EffectDefinition = {
+export const AMP_ACOUSTIC_DEFINITION: EffectDefinition<typeof EFFECT_TYPE.AMP_ACOUSTIC> = {
   type: EFFECT_TYPE.AMP_ACOUSTIC,
   name: 'Acoustic Sim',
   category: EFFECT_CATEGORY.AMP,
@@ -173,7 +173,12 @@ export const AMP_ACOUSTIC_DEFINITION: EffectDefinition = {
   parameters: AMP_SHARED_PARAMETERS,
 };
 
-export const EFFECT_DEFINITIONS: Record<string, EffectDefinition> = {
+/**
+ * Every effect definition keyed by its type. The mapped type makes the table
+ * total (a new effect type without a definition is a compile error) and keeps
+ * each key in step with its definition's own `type`.
+ */
+export const EFFECT_DEFINITIONS: { readonly [T in EffectType]: EffectDefinition<T> } = {
   [EFFECT_TYPE.DISTORTION]: DISTORTION_DEFINITION,
   [EFFECT_TYPE.DELAY]: DELAY_DEFINITION,
   [EFFECT_TYPE.REVERB]: REVERB_DEFINITION,
@@ -201,11 +206,11 @@ export const PEDAL_EFFECT_TYPES = [
   EFFECT_TYPE.PHASER,
   EFFECT_TYPE.FUZZ,
   EFFECT_TYPE.NOISE_GATE,
-] as const;
+] as const satisfies readonly PedalEffectType[];
 
 export const AMP_TYPES = [
   EFFECT_TYPE.AMP_CLEAN,
   EFFECT_TYPE.AMP_CRUNCH,
   EFFECT_TYPE.AMP_HIGHGAIN,
   EFFECT_TYPE.AMP_ACOUSTIC,
-] as const;
+] as const satisfies readonly AmpType[];

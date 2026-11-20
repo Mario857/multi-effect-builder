@@ -4,6 +4,7 @@ import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
 import { VuMeter } from '@/components/shared/VuMeter';
 import { Knob } from '@/components/shared/Knob';
 import { useAudioStore } from '@/lib/store/audioStore';
+import { useMeterStore } from '@/lib/store/meterStore';
 
 const INPUT_LEVEL_SCALE = 5;
 const DB_FLOOR = -60;
@@ -15,12 +16,10 @@ function levelToDb(level: number): number {
 }
 
 export function MeterStrip() {
-  const {
-    inputLevel,
-    outputLevel,
-    masterVolume,
-    setMasterVolume,
-  } = useAudioStore();
+  const inputLevel = useMeterStore((state) => state.inputLevel);
+  const outputLevel = useMeterStore((state) => state.outputLevel);
+  const masterVolume = useAudioStore((state) => state.masterVolume);
+  const setMasterVolume = useAudioStore((state) => state.setMasterVolume);
 
   const inputDb = levelToDb(inputLevel);
   const outputDb = levelToDb(outputLevel);
