@@ -1,7 +1,9 @@
 import { EffectNode } from '@/lib/audio/effectNode';
+import { COMPRESSOR_DEFINITION } from '@/lib/constants/effects';
 
-const PARAM_RAMP_TIME = 0.02;
-
+/**
+ * Dynamic range compressor built on the native DynamicsCompressorNode.
+ */
 export class CompressorEffect extends EffectNode {
   private compressorNode: DynamicsCompressorNode;
 
@@ -9,34 +11,30 @@ export class CompressorEffect extends EffectNode {
     super(context);
 
     this.compressorNode = context.createDynamicsCompressor();
-    this.compressorNode.threshold.value = -24;
-    this.compressorNode.ratio.value = 4;
-    this.compressorNode.attack.value = 0.003;
-    this.compressorNode.release.value = 0.25;
-    this.compressorNode.knee.value = 8;
 
     // Wet path: input → compressor → wetNode
     this.inputNode.connect(this.compressorNode);
     this.compressorNode.connect(this.wetNode);
+
+    this.applyDefaults(COMPRESSOR_DEFINITION);
   }
 
-  setParameter(id: string, value: number): void {
-    const now = this.context.currentTime;
+  protected applyParameter(id: string, value: number): void {
     switch (id) {
       case 'threshold':
-        this.compressorNode.threshold.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.compressorNode.threshold, value);
         break;
       case 'ratio':
-        this.compressorNode.ratio.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.compressorNode.ratio, value);
         break;
       case 'attack':
-        this.compressorNode.attack.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.compressorNode.attack, value);
         break;
       case 'release':
-        this.compressorNode.release.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.compressorNode.release, value);
         break;
       case 'knee':
-        this.compressorNode.knee.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.compressorNode.knee, value);
         break;
     }
   }

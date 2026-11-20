@@ -5,4 +5,5 @@
  */
 export const WORKLET_MODULE_PATHS: readonly string[] = [
   '/worklets/tube-preamp-processor.js',
+  '/worklets/noise-gate-processor.js',
 ];

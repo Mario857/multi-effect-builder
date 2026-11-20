@@ -9,7 +9,14 @@
  *   - Output transformer bandwidth coloring
  *   - Power supply sag via RC envelope follower
  *   - DC blocking after each nonlinear stage
+ *
+ * The amp type is fixed at construction — the app builds a new amp node (with
+ * its own tone stack and cabinet) when the amp model changes.
  */
+
+// Message that tells the processor its node was disposed
+// (must match WORKLET_DISPOSE_MESSAGE_TYPE in src/lib/constants/dsp.ts)
+const DISPOSE_MESSAGE_TYPE = 'dispose';
 
 // ── Amp type indices (must match tubePreampConstants.ts) ──────────────
 const AMP_TYPE_CLEAN = 0;
@@ -110,8 +117,9 @@ class TubePreampProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
 
-    this._ampType = AMP_TYPE_CLEAN;
-    this._hasCascade = false;
+    this._ampType = options.processorOptions?.ampType ?? AMP_TYPE_CLEAN;
+    this._hasCascade = this._ampType === AMP_TYPE_HIGHGAIN;
+    this._isDisposed = false;
 
     // DC block state — one per nonlinear stage (preamp1, preamp2, poweramp)
     this._dcR = 1 - (2 * Math.PI * DC_BLOCK_FC) / sampleRate;
@@ -123,44 +131,23 @@ class TubePreampProcessor extends AudioWorkletProcessor {
     this._otLpState = 0;
     this._otHpX1 = 0;
     this._otHpY1 = 0;
-    this._updateOTCoefficients();
+    const lpFc = OT_LOWPASS_FC[this._ampType] ?? OT_LOWPASS_FC[AMP_TYPE_CLEAN];
+    const hpFc = OT_HIGHPASS_FC[this._ampType] ?? OT_HIGHPASS_FC[AMP_TYPE_CLEAN];
+    this._otLpCoeff = 1 - Math.exp(-2 * Math.PI * lpFc / sampleRate);
+    this._otHpR = 1 - (2 * Math.PI * hpFc) / sampleRate;
 
     // Sag envelope follower
     this._sagEnvelope = 0;
     this._sagAttackCoeff = 1 - Math.exp(-1 / (SAG_ATTACK_MS * 0.001 * sampleRate));
     this._sagReleaseCoeff = 1 - Math.exp(-1 / (SAG_RELEASE_MS * 0.001 * sampleRate));
 
+    // Without this the processor would keep returning true from process() and
+    // could never be garbage collected after its node is dropped.
     this.port.onmessage = (event) => {
-      if (event.data.type === 'setAmpType') {
-        this._ampType = event.data.ampType;
-        this._hasCascade = this._ampType === AMP_TYPE_HIGHGAIN;
-        this._resetState();
-        this._updateOTCoefficients();
+      if (event.data.type === DISPOSE_MESSAGE_TYPE) {
+        this._isDisposed = true;
       }
     };
-
-    if (options.processorOptions) {
-      this._ampType = options.processorOptions.ampType ?? AMP_TYPE_CLEAN;
-      this._hasCascade = this._ampType === AMP_TYPE_HIGHGAIN;
-      this._updateOTCoefficients();
-    }
-  }
-
-  _resetState() {
-    this._dcX1_a = 0; this._dcY1_a = 0;
-    this._dcX1_b = 0; this._dcY1_b = 0;
-    this._dcX1_c = 0; this._dcY1_c = 0;
-    this._otLpState = 0;
-    this._otHpX1 = 0;
-    this._otHpY1 = 0;
-    this._sagEnvelope = 0;
-  }
-
-  _updateOTCoefficients() {
-    const lpFc = OT_LOWPASS_FC[this._ampType] ?? OT_LOWPASS_FC[AMP_TYPE_CLEAN];
-    const hpFc = OT_HIGHPASS_FC[this._ampType] ?? OT_HIGHPASS_FC[AMP_TYPE_CLEAN];
-    this._otLpCoeff = 1 - Math.exp(-2 * Math.PI * lpFc / sampleRate);
-    this._otHpR = 1 - (2 * Math.PI * hpFc) / sampleRate;
   }
 
   static get parameterDescriptors() {
@@ -180,36 +167,10 @@ class TubePreampProcessor extends AudioWorkletProcessor {
     }
   }
 
-  _applyStage2(x, gain) {
-    return highGainStage2Curve(x, gain);
-  }
-
-  /** One-pole DC block: y[n] = x[n] - x[n-1] + R * y[n-1] */
-  _dcBlock(sample, x1, y1) {
-    const y = sample - x1 + this._dcR * y1;
-    return [y, sample, y];
-  }
-
-  _updateSagEnvelope(sample) {
-    const rectified = Math.abs(sample);
-    if (rectified > this._sagEnvelope) {
-      this._sagEnvelope += this._sagAttackCoeff * (rectified - this._sagEnvelope);
-    } else {
-      this._sagEnvelope += this._sagReleaseCoeff * (rectified - this._sagEnvelope);
-    }
-    return this._sagEnvelope;
-  }
-
-  /** Output transformer bandwidth — lowpass + highpass */
-  _applyOutputTransformer(sample) {
-    this._otLpState += this._otLpCoeff * (sample - this._otLpState);
-    const hpOut = this._otLpState - this._otHpX1 + this._otHpR * this._otHpY1;
-    this._otHpX1 = this._otLpState;
-    this._otHpY1 = hpOut;
-    return hpOut;
-  }
-
   process(inputs, outputs, parameters) {
+    // Returning false lets the browser release a disposed processor
+    if (this._isDisposed) return false;
+
     const input = inputs[0];
     const output = outputs[0];
 
@@ -229,13 +190,35 @@ class TubePreampProcessor extends AudioWorkletProcessor {
 
     const boost = PREAMP_BOOST[this._ampType] ?? PREAMP_BOOST[AMP_TYPE_CLEAN];
     const powerDrive = POWER_AMP_DRIVE[this._ampType] ?? POWER_AMP_DRIVE[AMP_TYPE_CLEAN];
+    const hasCascade = this._hasCascade;
+
+    // Filter state lives in locals for the duration of the block and is written
+    // back once at the end. Nothing in this loop may allocate: this is the
+    // real-time audio thread, and garbage collection pauses are audible glitches.
+    const dcR = this._dcR;
+    let dcX1A = this._dcX1_a;
+    let dcY1A = this._dcY1_a;
+    let dcX1B = this._dcX1_b;
+    let dcY1B = this._dcY1_b;
+    let dcX1C = this._dcX1_c;
+    let dcY1C = this._dcY1_c;
+    const otLpCoeff = this._otLpCoeff;
+    const otHpR = this._otHpR;
+    let otLpState = this._otLpState;
+    let otHpX1 = this._otHpX1;
+    let otHpY1 = this._otHpY1;
+    const sagAttackCoeff = this._sagAttackCoeff;
+    const sagReleaseCoeff = this._sagReleaseCoeff;
+    let sagEnvelope = this._sagEnvelope;
 
     for (let i = 0; i < blockSize; i++) {
       const rawSample = inputChannel[i];
 
       // Sag envelope follower
-      const envelope = this._updateSagEnvelope(rawSample);
-      const sagGainReduction = 1 - sagAmount * SAG_MAX_REDUCTION * Math.min(envelope * 4, 1);
+      const rectified = Math.abs(rawSample);
+      const sagCoeff = rectified > sagEnvelope ? sagAttackCoeff : sagReleaseCoeff;
+      sagEnvelope += sagCoeff * (rectified - sagEnvelope);
+      const sagGainReduction = 1 - sagAmount * SAG_MAX_REDUCTION * Math.min(sagEnvelope * 4, 1);
 
       // Preamp boost with sag modulation
       let sample = rawSample * (boost * gain + 1) * sagGainReduction;
@@ -243,19 +226,18 @@ class TubePreampProcessor extends AudioWorkletProcessor {
       // Preamp stage 1 — asymmetric tube clipping
       sample = this._applyStage1(sample, gain);
 
-      let dcResult = this._dcBlock(sample, this._dcX1_a, this._dcY1_a);
-      sample = dcResult[0];
-      this._dcX1_a = dcResult[1];
-      this._dcY1_a = dcResult[2];
+      // One-pole DC block: y[n] = x[n] - x[n-1] + R * y[n-1]
+      dcY1A = sample - dcX1A + dcR * dcY1A;
+      dcX1A = sample;
+      sample = dcY1A;
 
       // Optional cascaded preamp stage 2 (highgain only)
-      if (this._hasCascade) {
-        sample = this._applyStage2(sample, gain);
+      if (hasCascade) {
+        sample = highGainStage2Curve(sample, gain);
 
-        dcResult = this._dcBlock(sample, this._dcX1_b, this._dcY1_b);
-        sample = dcResult[0];
-        this._dcX1_b = dcResult[1];
-        this._dcY1_b = dcResult[2];
+        dcY1B = sample - dcX1B + dcR * dcY1B;
+        dcX1B = sample;
+        sample = dcY1B;
       }
 
       // Power amp stage — soft symmetrical clipping
@@ -263,16 +245,28 @@ class TubePreampProcessor extends AudioWorkletProcessor {
       sample = powerAmpCurve(sample, powerDrive * sagGainReduction);
 
       // DC block after power amp
-      dcResult = this._dcBlock(sample, this._dcX1_c, this._dcY1_c);
-      sample = dcResult[0];
-      this._dcX1_c = dcResult[1];
-      this._dcY1_c = dcResult[2];
+      dcY1C = sample - dcX1C + dcR * dcY1C;
+      dcX1C = sample;
+      sample = dcY1C;
 
-      // Output transformer bandwidth coloring
-      sample = this._applyOutputTransformer(sample);
+      // Output transformer bandwidth coloring — lowpass + highpass
+      otLpState += otLpCoeff * (sample - otLpState);
+      otHpY1 = otLpState - otHpX1 + otHpR * otHpY1;
+      otHpX1 = otLpState;
 
-      outputChannel[i] = sample;
+      outputChannel[i] = otHpY1;
     }
+
+    this._dcX1_a = dcX1A;
+    this._dcY1_a = dcY1A;
+    this._dcX1_b = dcX1B;
+    this._dcY1_b = dcY1B;
+    this._dcX1_c = dcX1C;
+    this._dcY1_c = dcY1C;
+    this._otLpState = otLpState;
+    this._otHpX1 = otHpX1;
+    this._otHpY1 = otHpY1;
+    this._sagEnvelope = sagEnvelope;
 
     // Copy mono to all output channels
     for (let ch = 1; ch < output.length; ch++) {

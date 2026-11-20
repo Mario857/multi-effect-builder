@@ -1,78 +1,54 @@
 import { EffectNode } from '@/lib/audio/effectNode';
-import { createAudioCurve, setWaveShaperCurve } from '@/lib/audio/curveUtils';
-import { createDCBlockFilter } from '@/lib/audio/filterUtils';
+import { createWaveShaperCurve } from '@/lib/audio/curveUtils';
+import { createBiquadFilter, createDCBlockFilter } from '@/lib/audio/filterUtils';
+import { BUTTERWORTH_Q, UNITY_GAIN, WAVESHAPER_OVERSAMPLE } from '@/lib/constants/dsp';
+import { DISTORTION_DEFINITION } from '@/lib/constants/effects';
 
-const CURVE_SAMPLES = 44100;
-const SOFT_CLIP_AMOUNT = 0.7;
-const HARD_CLIP_THRESHOLD = 0.5;
-const TUBE_WARMTH = 3;
+// Drive 0–1 maps to a pre-gain / curve steepness of 1–21
+const DRIVE_GAIN_RANGE = 20;
+// Negative half-wave clips softer than the positive one — the asymmetry adds even harmonics
+const NEGATIVE_HALF_SOFTNESS = 0.7;
 
-function createSoftClipCurve(drive: number) {
-  const curve = createAudioCurve(CURVE_SAMPLES);
-  const amount = drive * 50 + 1;
-  for (let i = 0; i < CURVE_SAMPLES; i++) {
-    const x = (i * 2) / CURVE_SAMPLES - 1;
-    curve[i] = ((TUBE_WARMTH + amount) * x) / (TUBE_WARMTH + amount * Math.abs(x));
-  }
-  return curve;
+function driveToAmount(drive: number): number {
+  return drive * DRIVE_GAIN_RANGE + UNITY_GAIN;
 }
 
-function createHardClipCurve(drive: number) {
-  const curve = createAudioCurve(CURVE_SAMPLES);
-  const threshold = HARD_CLIP_THRESHOLD + (1 - drive) * HARD_CLIP_THRESHOLD;
-  for (let i = 0; i < CURVE_SAMPLES; i++) {
-    const x = (i * 2) / CURVE_SAMPLES - 1;
-    curve[i] = Math.max(-threshold, Math.min(threshold, x * (1 + drive * 10)));
-  }
-  return curve;
+function createTubeClipCurve(drive: number): Float32Array<ArrayBuffer> {
+  const amount = driveToAmount(drive);
+  // Asymmetric tube-like clipping
+  return createWaveShaperCurve((x) =>
+    x >= 0
+      ? 1 - Math.exp(-amount * x)
+      : -(1 - Math.exp(amount * x * NEGATIVE_HALF_SOFTNESS)),
+  );
 }
 
-function createTubeClipCurve(drive: number) {
-  const curve = createAudioCurve(CURVE_SAMPLES);
-  const amount = drive * 20 + 1;
-  for (let i = 0; i < CURVE_SAMPLES; i++) {
-    const x = (i * 2) / CURVE_SAMPLES - 1;
-    // Asymmetric tube-like clipping
-    if (x >= 0) {
-      curve[i] = 1 - Math.exp(-amount * x);
-    } else {
-      curve[i] = -(1 - Math.exp(amount * x * SOFT_CLIP_AMOUNT));
-    }
-  }
-  return curve;
-}
-
+/**
+ * Tube-style overdrive: input boost into an asymmetric waveshaper,
+ * followed by a tone lowpass and output level.
+ */
 export class DistortionEffect extends EffectNode {
   private inputBoost: GainNode;
   private waveShaperNode: WaveShaperNode;
   private dcBlockFilter: BiquadFilterNode;
   private toneFilter: BiquadFilterNode;
   private driveGain: GainNode;
-  private drive: number;
 
   constructor(context: AudioContext) {
     super(context);
 
-    this.drive = 0.5;
-
     // Input boost to push the signal into the waveshaper
     this.inputBoost = context.createGain();
-    this.inputBoost.gain.value = this.drive * 20 + 1;
 
     this.waveShaperNode = context.createWaveShaper();
-    this.waveShaperNode.oversample = '4x';
-    setWaveShaperCurve(this.waveShaperNode, () => createTubeClipCurve(this.drive));
+    this.waveShaperNode.oversample = WAVESHAPER_OVERSAMPLE;
 
     // DC blocking after waveshaper prevents offset buildup
     this.dcBlockFilter = createDCBlockFilter(context);
 
-    this.toneFilter = context.createBiquadFilter();
-    this.toneFilter.type = 'lowpass';
-    this.toneFilter.frequency.value = 3000;
-    this.toneFilter.Q.value = 0.7;
+    this.toneFilter = createBiquadFilter(context, { type: 'lowpass', q: BUTTERWORTH_Q });
 
     this.driveGain = context.createGain();
-    this.driveGain.gain.value = 0.7;
 
     // Wet path: input → boost → waveshaper → dcBlock → tone filter → drive gain → wet
     this.inputNode.connect(this.inputBoost);
@@ -81,26 +57,24 @@ export class DistortionEffect extends EffectNode {
     this.dcBlockFilter.connect(this.toneFilter);
     this.toneFilter.connect(this.driveGain);
     this.driveGain.connect(this.wetNode);
+
+    this.applyDefaults(DISTORTION_DEFINITION);
   }
 
-  setParameter(id: string, value: number): void {
-    const now = this.context.currentTime;
-    const rampTime = 0.02;
+  protected applyParameter(id: string, value: number): void {
     switch (id) {
       case 'drive':
-        this.drive = value;
-        this.inputBoost.gain.linearRampToValueAtTime(value * 20 + 1, now + rampTime);
-        setWaveShaperCurve(this.waveShaperNode, () => createTubeClipCurve(value));
+        this.setParam(this.inputBoost.gain, driveToAmount(value));
+        this.waveShaperNode.curve = createTubeClipCurve(value);
         break;
       case 'tone':
-        this.toneFilter.frequency.linearRampToValueAtTime(value, now + rampTime);
+        this.setParam(this.toneFilter.frequency, value);
         break;
       case 'level':
-        this.driveGain.gain.linearRampToValueAtTime(value, now + rampTime);
+        this.setParam(this.driveGain.gain, value);
         break;
       case 'mix':
-        this.wetNode.gain.linearRampToValueAtTime(value, now + rampTime);
-        this.bypassNode.gain.linearRampToValueAtTime(1 - value, now + rampTime);
+        this.setMix(value);
         break;
     }
   }
@@ -114,5 +88,3 @@ export class DistortionEffect extends EffectNode {
     this.disposeBase();
   }
 }
-
-export { createSoftClipCurve, createHardClipCurve, createTubeClipCurve };

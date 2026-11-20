@@ -1,8 +1,12 @@
 import { EffectNode } from '@/lib/audio/effectNode';
+import { createBiquadFilter } from '@/lib/audio/filterUtils';
+import { EQ_DEFINITION } from '@/lib/constants/effects';
 
-const PARAM_RAMP_TIME = 0.02;
 const DEFAULT_Q = 1.5;
 
+/**
+ * Three-band equalizer: low shelf, peaking mid, high shelf.
+ */
 export class EqualizerEffect extends EffectNode {
   private lowFilter: BiquadFilterNode;
   private midFilter: BiquadFilterNode;
@@ -11,49 +15,38 @@ export class EqualizerEffect extends EffectNode {
   constructor(context: AudioContext) {
     super(context);
 
-    this.lowFilter = context.createBiquadFilter();
-    this.lowFilter.type = 'lowshelf';
-    this.lowFilter.frequency.value = 200;
-    this.lowFilter.gain.value = 0;
-
-    this.midFilter = context.createBiquadFilter();
-    this.midFilter.type = 'peaking';
-    this.midFilter.frequency.value = 1000;
-    this.midFilter.Q.value = DEFAULT_Q;
-    this.midFilter.gain.value = 0;
-
-    this.highFilter = context.createBiquadFilter();
-    this.highFilter.type = 'highshelf';
-    this.highFilter.frequency.value = 5000;
-    this.highFilter.gain.value = 0;
+    this.lowFilter = createBiquadFilter(context, { type: 'lowshelf' });
+    this.midFilter = createBiquadFilter(context, { type: 'peaking', q: DEFAULT_Q });
+    this.highFilter = createBiquadFilter(context, { type: 'highshelf' });
 
     // Wet path: input → low → mid → high → wetNode
     this.inputNode.connect(this.lowFilter);
     this.lowFilter.connect(this.midFilter);
     this.midFilter.connect(this.highFilter);
     this.highFilter.connect(this.wetNode);
+
+    this.applyDefaults(EQ_DEFINITION);
   }
 
-  setParameter(id: string, value: number): void {
-    const now = this.context.currentTime;
+  protected applyParameter(id: string, value: number): void {
     switch (id) {
       case 'lowGain':
-        this.lowFilter.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.lowFilter.gain, value);
         break;
       case 'lowFreq':
-        this.lowFilter.frequency.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.lowFilter.frequency, value);
         break;
       case 'midGain':
-        this.midFilter.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.midFilter.gain, value);
         break;
       case 'midFreq':
-        this.midFilter.frequency.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.midFilter.frequency, value);
         break;
       case 'highGain':
-        this.highFilter.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.highFilter.gain, value);
         break;
       case 'highFreq':
-        this.highFilter.frequency.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.highFilter.frequency, value);
         break;
     }
   }

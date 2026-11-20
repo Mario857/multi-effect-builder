@@ -1,7 +1,13 @@
 import { EffectNode } from '@/lib/audio/effectNode';
+import { UNITY_GAIN } from '@/lib/constants/dsp';
+import { TREMOLO_DEFINITION } from '@/lib/constants/effects';
 
-const PARAM_RAMP_TIME = 0.02;
+// The LFO swings symmetrically around its centre, so its amplitude is half the depth
+const LFO_AMPLITUDE_PER_DEPTH = 0.5;
 
+/**
+ * Tremolo: a sine LFO modulates the volume downward from unity.
+ */
 export class TremoloEffect extends EffectNode {
   private lfo: OscillatorNode;
   private lfoGain: GainNode;
@@ -11,14 +17,11 @@ export class TremoloEffect extends EffectNode {
     super(context);
 
     this.tremoloGain = context.createGain();
-    this.tremoloGain.gain.value = 1;
 
     this.lfo = context.createOscillator();
     this.lfo.type = 'sine';
-    this.lfo.frequency.value = 5;
 
     this.lfoGain = context.createGain();
-    this.lfoGain.gain.value = 0.6;
 
     // LFO modulates the tremolo gain
     this.lfo.connect(this.lfoGain);
@@ -28,19 +31,27 @@ export class TremoloEffect extends EffectNode {
     // Wet path: input → tremoloGain → wetNode
     this.inputNode.connect(this.tremoloGain);
     this.tremoloGain.connect(this.wetNode);
+
+    this.applyDefaults(TREMOLO_DEFINITION);
   }
 
-  setParameter(id: string, value: number): void {
-    const now = this.context.currentTime;
+  protected applyParameter(id: string, value: number): void {
     switch (id) {
       case 'rate':
-        this.lfo.frequency.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.lfo.frequency, value);
         break;
-      case 'depth':
-        this.lfoGain.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+      case 'depth': {
+        // Tremolo only ever attenuates: the gain swings between (1 - depth) and
+        // unity. Centring the LFO on unity instead would boost the signal by up
+        // to +6 dB on every positive half-cycle.
+        const lfoAmplitude = value * LFO_AMPLITUDE_PER_DEPTH;
+        this.setParam(this.tremoloGain.gain, UNITY_GAIN - lfoAmplitude);
+        this.setParam(this.lfoGain.gain, lfoAmplitude);
         break;
+      }
       case 'mix':
         // For tremolo, mix blends between dry and tremolo signal
+        this.setMix(value);
         break;
     }
   }

@@ -1,64 +1,42 @@
-import type { EffectType } from '@/types/audio';
+import type { AmpType } from '@/types/audio';
 import {
+  AMP_TYPE_INDEX,
+  TUBE_PREAMP_PARAM,
   TUBE_PREAMP_PROCESSOR_NAME,
-  getAmpTypeIndex,
 } from '@/lib/audio/worklets/tubePreampConstants';
-
-const PARAM_RAMP_TIME = 0.02;
+import { disposeWorkletNode, getWorkletParam } from '@/lib/audio/worklets/workletUtils';
 
 /**
  * AudioWorkletNode wrapper for the tube preamp processor.
- * Provides typed access to gain/sagAmount AudioParams and
- * amp type switching via MessagePort.
+ * Provides typed access to the gain/sagAmount AudioParams.
+ * The amp type is fixed for the lifetime of the node.
  */
 export class TubePreampNode {
   readonly node: AudioWorkletNode;
-  private readonly gainParam: AudioParam;
-  private readonly sagParam: AudioParam;
-
-  private constructor(node: AudioWorkletNode) {
-    this.node = node;
-    this.gainParam = node.parameters.get('gain')!;
-    this.sagParam = node.parameters.get('sagAmount')!;
-  }
+  /** Preamp drive, 0–1 */
+  readonly gain: AudioParam;
+  /** Power supply sag amount, 0–1 */
+  readonly sagAmount: AudioParam;
 
   /**
-   * Create a TubePreampNode. The worklet module must already be registered
-   * on the AudioContext before calling this.
+   * The worklet module must already be registered on the AudioContext
+   * before constructing this.
    */
-  static create(context: AudioContext, ampType: EffectType): TubePreampNode {
-    const workletNode = new AudioWorkletNode(context, TUBE_PREAMP_PROCESSOR_NAME, {
+  constructor(context: AudioContext, ampType: AmpType) {
+    this.node = new AudioWorkletNode(context, TUBE_PREAMP_PROCESSOR_NAME, {
       numberOfInputs: 1,
       numberOfOutputs: 1,
       outputChannelCount: [1],
       processorOptions: {
-        ampType: getAmpTypeIndex(ampType),
+        ampType: AMP_TYPE_INDEX[ampType],
       },
     });
-
-    return new TubePreampNode(workletNode);
+    this.gain = getWorkletParam(this.node, TUBE_PREAMP_PARAM.GAIN);
+    this.sagAmount = getWorkletParam(this.node, TUBE_PREAMP_PARAM.SAG_AMOUNT);
   }
 
-  setGain(value: number, time: number): void {
-    this.gainParam.linearRampToValueAtTime(value, time + PARAM_RAMP_TIME);
-  }
-
-  setSagAmount(value: number, time: number): void {
-    this.sagParam.linearRampToValueAtTime(value, time + PARAM_RAMP_TIME);
-  }
-
-  setAmpType(ampType: EffectType): void {
-    this.node.port.postMessage({
-      type: 'setAmpType',
-      ampType: getAmpTypeIndex(ampType),
-    });
-  }
-
-  connect(destination: AudioNode): void {
-    this.node.connect(destination);
-  }
-
-  disconnect(): void {
-    this.node.disconnect();
+  /** Disconnects the node and lets the browser release its processor. */
+  dispose(): void {
+    disposeWorkletNode(this.node);
   }
 }

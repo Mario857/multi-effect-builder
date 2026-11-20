@@ -1,10 +1,20 @@
 import { EffectNode } from '@/lib/audio/effectNode';
+import { createBiquadFilter } from '@/lib/audio/filterUtils';
 import { TubePreampNode } from '@/lib/audio/worklets/tubePreampNode';
 import { getCachedCabIR } from '@/lib/audio/cabImpulseResponse';
-import type { EffectType } from '@/types/audio';
+import { BUTTERWORTH_Q } from '@/lib/constants/dsp';
+import { EFFECT_DEFINITIONS } from '@/lib/constants/effects';
+import type { AmpType } from '@/types/audio';
 import { EFFECT_TYPE } from '@/types/audio';
 
-const PARAM_RAMP_TIME = 0.02;
+// Input highpass — keeps rumble and hum out of the gain stages
+const INPUT_LOWCUT_FREQUENCY = 100;
+// Very low Q gives the inter-stage smoothing lowpass a gentle, gradual roll-off
+const SMOOTHING_Q = 0.35;
+const PRESENCE_Q = 1.0;
+// Fallback cabinet: second lowpass sits above the first to steepen the roll-off
+const CAB_SECOND_LOWPASS_FREQUENCY_RATIO = 1.4;
+const CAB_SECOND_LOWPASS_Q = 0.5;
 
 interface AmpCharacter {
   readonly postTrim: number;
@@ -24,7 +34,7 @@ interface AmpCharacter {
   readonly cabBodyQ: number;
 }
 
-const AMP_CHARACTERS: Record<string, AmpCharacter> = {
+const AMP_CHARACTERS: Readonly<Record<AmpType, AmpCharacter>> = {
   [EFFECT_TYPE.AMP_CLEAN]: {
     postTrim: 0.85,
     bassFreq: 150,
@@ -87,6 +97,10 @@ const AMP_CHARACTERS: Record<string, AmpCharacter> = {
   },
 };
 
+/**
+ * Guitar amp model: input filtering → tube preamp/power amp worklet →
+ * tone stack → cabinet simulation → master volume.
+ */
 export class AmpSimulatorEffect extends EffectNode {
   private inputLowCut: BiquadFilterNode;
   private inputHighCut: BiquadFilterNode;
@@ -103,61 +117,59 @@ export class AmpSimulatorEffect extends EffectNode {
   private cabLowpass2: BiquadFilterNode | null;
   private cabBody: BiquadFilterNode | null;
   private masterGain: GainNode;
-  private character: AmpCharacter;
 
   /**
    * Use AmpSimulatorEffect.create() instead — the worklet module must be
    * registered on the AudioContext before constructing the node.
    */
-  private constructor(context: AudioContext, tubePreamp: TubePreampNode, ampType: EffectType) {
+  private constructor(context: AudioContext, ampType: AmpType) {
     super(context);
 
-    this.character = AMP_CHARACTERS[ampType] || AMP_CHARACTERS[EFFECT_TYPE.AMP_CLEAN];
-    this.tubePreamp = tubePreamp;
+    const character = AMP_CHARACTERS[ampType];
+    this.tubePreamp = new TubePreampNode(context, ampType);
 
     // Input filtering — tight bandpass before any amplification
-    this.inputLowCut = context.createBiquadFilter();
-    this.inputLowCut.type = 'highpass';
-    this.inputLowCut.frequency.value = 100;
-    this.inputLowCut.Q.value = 0.7;
-
-    this.inputHighCut = context.createBiquadFilter();
-    this.inputHighCut.type = 'lowpass';
-    this.inputHighCut.frequency.value = this.character.inputHighCut;
-    this.inputHighCut.Q.value = 0.7;
+    this.inputLowCut = createBiquadFilter(context, {
+      type: 'highpass',
+      frequency: INPUT_LOWCUT_FREQUENCY,
+      q: BUTTERWORTH_Q,
+    });
+    this.inputHighCut = createBiquadFilter(context, {
+      type: 'lowpass',
+      frequency: character.inputHighCut,
+      q: BUTTERWORTH_Q,
+    });
 
     // Post-clipping smoothing — simulates coupling capacitor between tube stages
-    this.smoothingFilter = context.createBiquadFilter();
-    this.smoothingFilter.type = 'lowpass';
-    this.smoothingFilter.frequency.value = this.character.smoothingCutoff;
-    this.smoothingFilter.Q.value = 0.35;
+    this.smoothingFilter = createBiquadFilter(context, {
+      type: 'lowpass',
+      frequency: character.smoothingCutoff,
+      q: SMOOTHING_Q,
+    });
 
     // Post-gain trim — per amp type to normalize output levels
     this.postGainTrim = context.createGain();
-    this.postGainTrim.gain.value = this.character.postTrim;
+    this.postGainTrim.gain.value = character.postTrim;
 
     // Tone stack
-    this.bassFilter = context.createBiquadFilter();
-    this.bassFilter.type = 'lowshelf';
-    this.bassFilter.frequency.value = this.character.bassFreq;
-    this.bassFilter.gain.value = 0;
-
-    this.midFilter = context.createBiquadFilter();
-    this.midFilter.type = 'peaking';
-    this.midFilter.frequency.value = this.character.midFreq;
-    this.midFilter.Q.value = this.character.midQ;
-    this.midFilter.gain.value = 0;
-
-    this.trebleFilter = context.createBiquadFilter();
-    this.trebleFilter.type = 'highshelf';
-    this.trebleFilter.frequency.value = this.character.trebleFreq;
-    this.trebleFilter.gain.value = 0;
-
-    this.presenceFilter = context.createBiquadFilter();
-    this.presenceFilter.type = 'peaking';
-    this.presenceFilter.frequency.value = this.character.presenceFreq;
-    this.presenceFilter.Q.value = 1.0;
-    this.presenceFilter.gain.value = 0;
+    this.bassFilter = createBiquadFilter(context, {
+      type: 'lowshelf',
+      frequency: character.bassFreq,
+    });
+    this.midFilter = createBiquadFilter(context, {
+      type: 'peaking',
+      frequency: character.midFreq,
+      q: character.midQ,
+    });
+    this.trebleFilter = createBiquadFilter(context, {
+      type: 'highshelf',
+      frequency: character.trebleFreq,
+    });
+    this.presenceFilter = createBiquadFilter(context, {
+      type: 'peaking',
+      frequency: character.presenceFreq,
+      q: PRESENCE_Q,
+    });
 
     // Cabinet simulation — use real IR if available, filter chain fallback otherwise
     const irBuffer = getCachedCabIR(ampType);
@@ -169,13 +181,12 @@ export class AmpSimulatorEffect extends EffectNode {
 
     // Master volume
     this.masterGain = context.createGain();
-    this.masterGain.gain.value = 0.7;
 
     // Build signal path
     this.inputNode.connect(this.inputLowCut);
     this.inputLowCut.connect(this.inputHighCut);
     this.inputHighCut.connect(this.tubePreamp.node);
-    this.tubePreamp.connect(this.smoothingFilter);
+    this.tubePreamp.node.connect(this.smoothingFilter);
     this.smoothingFilter.connect(this.postGainTrim);
     this.postGainTrim.connect(this.bassFilter);
     this.bassFilter.connect(this.midFilter);
@@ -190,21 +201,22 @@ export class AmpSimulatorEffect extends EffectNode {
       this.cabConvolver.connect(this.masterGain);
     } else {
       // Filter chain fallback — cascaded lowpass + body peaking
-      this.cabBody = context.createBiquadFilter();
-      this.cabBody.type = 'peaking';
-      this.cabBody.frequency.value = this.character.cabBodyFreq;
-      this.cabBody.gain.value = this.character.cabBodyGain;
-      this.cabBody.Q.value = this.character.cabBodyQ;
-
-      this.cabLowpass1 = context.createBiquadFilter();
-      this.cabLowpass1.type = 'lowpass';
-      this.cabLowpass1.frequency.value = this.character.cabCutoff;
-      this.cabLowpass1.Q.value = this.character.cabCutoffQ;
-
-      this.cabLowpass2 = context.createBiquadFilter();
-      this.cabLowpass2.type = 'lowpass';
-      this.cabLowpass2.frequency.value = this.character.cabCutoff * 1.4;
-      this.cabLowpass2.Q.value = 0.5;
+      this.cabBody = createBiquadFilter(context, {
+        type: 'peaking',
+        frequency: character.cabBodyFreq,
+        q: character.cabBodyQ,
+        gain: character.cabBodyGain,
+      });
+      this.cabLowpass1 = createBiquadFilter(context, {
+        type: 'lowpass',
+        frequency: character.cabCutoff,
+        q: character.cabCutoffQ,
+      });
+      this.cabLowpass2 = createBiquadFilter(context, {
+        type: 'lowpass',
+        frequency: character.cabCutoff * CAB_SECOND_LOWPASS_FREQUENCY_RATIO,
+        q: CAB_SECOND_LOWPASS_Q,
+      });
 
       this.presenceFilter.connect(this.cabBody);
       this.cabBody.connect(this.cabLowpass1);
@@ -213,40 +225,40 @@ export class AmpSimulatorEffect extends EffectNode {
     }
 
     this.masterGain.connect(this.wetNode);
+
+    this.applyDefaults(EFFECT_DEFINITIONS[ampType]);
   }
 
   /**
-   * Factory — creates the AudioWorkletNode then wires the signal chain.
+   * Factory — creates the tube preamp worklet node and wires the signal chain.
    * Worklet module and cab IRs must already be loaded via AudioEngine.start().
    */
-  static create(context: AudioContext, ampType: EffectType): AmpSimulatorEffect {
-    const tubePreamp = TubePreampNode.create(context, ampType);
-    return new AmpSimulatorEffect(context, tubePreamp, ampType);
+  static create(context: AudioContext, ampType: AmpType): AmpSimulatorEffect {
+    return new AmpSimulatorEffect(context, ampType);
   }
 
-  setParameter(id: string, value: number): void {
-    const now = this.context.currentTime;
+  protected applyParameter(id: string, value: number): void {
     switch (id) {
       case 'gain':
-        this.tubePreamp.setGain(value, now);
+        this.setParam(this.tubePreamp.gain, value);
         break;
       case 'bass':
-        this.bassFilter.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.bassFilter.gain, value);
         break;
       case 'mid':
-        this.midFilter.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.midFilter.gain, value);
         break;
       case 'treble':
-        this.trebleFilter.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.trebleFilter.gain, value);
         break;
       case 'presence':
-        this.presenceFilter.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.presenceFilter.gain, value);
         break;
       case 'master':
-        this.masterGain.gain.linearRampToValueAtTime(value, now + PARAM_RAMP_TIME);
+        this.setParam(this.masterGain.gain, value);
         break;
       case 'sag':
-        this.tubePreamp.setSagAmount(value, now);
+        this.setParam(this.tubePreamp.sagAmount, value);
         break;
     }
   }
@@ -254,7 +266,7 @@ export class AmpSimulatorEffect extends EffectNode {
   dispose(): void {
     this.inputLowCut.disconnect();
     this.inputHighCut.disconnect();
-    this.tubePreamp.disconnect();
+    this.tubePreamp.dispose();
     this.smoothingFilter.disconnect();
     this.postGainTrim.disconnect();
     this.bassFilter.disconnect();
