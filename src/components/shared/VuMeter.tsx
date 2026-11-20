@@ -1,16 +1,17 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useMemo } from 'react';
 import { mergeClassNames } from '@/lib/helpers/mergeClassNames';
+import {
+  VU_METER_ARIA_MAX,
+  VU_METER_DEFAULT_HEIGHT,
+  VU_METER_DEFAULT_WIDTH,
+  VU_METER_HIGH_THRESHOLD,
+  VU_METER_MID_THRESHOLD,
+  VU_METER_SEGMENTS,
+} from '@/lib/constants/ui';
 
-const METER_SEGMENTS = 20;
-const GREEN_THRESHOLD = 0.6;
-const YELLOW_THRESHOLD = 0.85;
-const GREEN_COLOR = '#22c55e';
-const YELLOW_COLOR = '#eab308';
-const RED_COLOR = '#ef4444';
-const INACTIVE_COLOR = '#1e1e34';
-const SEGMENT_GAP = 2;
+const SEGMENT_INDEXES = Array.from({ length: VU_METER_SEGMENTS }, (_, index) => index);
 
 interface Props {
   level: number;
@@ -21,67 +22,64 @@ interface Props {
   className?: string;
 }
 
+function getSegmentColorClass(index: number, activeCount: number): string {
+  const isActive = index < activeCount;
+  if (!isActive) return 'bg-meter-off';
+  const position = index / VU_METER_SEGMENTS;
+  if (position < VU_METER_MID_THRESHOLD) return 'bg-meter-low';
+  if (position < VU_METER_HIGH_THRESHOLD) return 'bg-meter-mid';
+  return 'bg-meter-high';
+}
+
+/**
+ * Segmented level meter.
+ *
+ * Drawn with plain elements coloured by theme tokens rather than a canvas: the level changes
+ * ~20 times a second, and the segment list is only rebuilt when the number of lit segments
+ * changes, so most updates touch nothing but `aria-valuenow`.
+ * @param level - Signal level; 0 is silence, 1 (or more) lights every segment
+ * @param width - Width in pixels
+ * @param height - Height in pixels
+ * @param orientation - `vertical` fills bottom-to-top, `horizontal` left-to-right
+ */
 export function VuMeter({
   level,
-  width = 12,
-  height = 80,
+  width = VU_METER_DEFAULT_WIDTH,
+  height = VU_METER_DEFAULT_HEIGHT,
   orientation = 'vertical',
   'aria-label': ariaLabel,
   className,
 }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Callers scale raw levels up for visibility (e.g. `level * 5`), so the input can exceed 1.
+  const clampedLevel = Math.min(1, Math.max(0, level));
+  const activeCount = Math.ceil(clampedLevel * VU_METER_SEGMENTS);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, width, height);
-
-    const isVertical = orientation === 'vertical';
-    const totalLength = isVertical ? height : width;
-    const barThickness = isVertical ? width : height;
-    const segmentLength = (totalLength - (METER_SEGMENTS - 1) * SEGMENT_GAP) / METER_SEGMENTS;
-
-    for (let i = 0; i < METER_SEGMENTS; i++) {
-      const segmentNormalized = i / METER_SEGMENTS;
-      const isActive = segmentNormalized < level;
-
-      let color = INACTIVE_COLOR;
-      if (isActive) {
-        if (segmentNormalized < GREEN_THRESHOLD) color = GREEN_COLOR;
-        else if (segmentNormalized < YELLOW_THRESHOLD) color = YELLOW_COLOR;
-        else color = RED_COLOR;
-      }
-
-      ctx.fillStyle = color;
-
-      if (isVertical) {
-        const y = height - (i + 1) * (segmentLength + SEGMENT_GAP);
-        ctx.fillRect(0, y, barThickness, segmentLength);
-      } else {
-        const x = i * (segmentLength + SEGMENT_GAP);
-        ctx.fillRect(x, 0, segmentLength, barThickness);
-      }
-    }
-  }, [level, width, height, orientation]);
+  const segments = useMemo(
+    () =>
+      SEGMENT_INDEXES.map((index) => (
+        <span
+          key={index}
+          className={mergeClassNames('flex-1', getSegmentColorClass(index, activeCount))}
+        />
+      )),
+    [activeCount],
+  );
 
   return (
-    <canvas
-      ref={canvasRef}
-      aria-label={ariaLabel}
+    <div
       role="meter"
-      aria-valuenow={Math.round(level * 100)}
+      aria-label={ariaLabel}
+      aria-valuenow={Math.round(clampedLevel * VU_METER_ARIA_MAX)}
       aria-valuemin={0}
-      aria-valuemax={100}
-      className={mergeClassNames('rounded', className)}
+      aria-valuemax={VU_METER_ARIA_MAX}
+      className={mergeClassNames(
+        'inline-flex shrink-0 gap-0.5 overflow-hidden rounded',
+        orientation === 'vertical' ? 'flex-col-reverse' : 'flex-row',
+        className,
+      )}
       style={{ width, height }}
-    />
+    >
+      {segments}
+    </div>
   );
 }

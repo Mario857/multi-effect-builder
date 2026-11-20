@@ -46,17 +46,31 @@
   --color-glass-surface: rgba(26, 26, 46, 0.6);
   --color-glass-border: rgba(255, 255, 255, 0.06);
 
+  /* Level meter segments: off, then low / mid / high as the signal gets hotter */
+  --color-meter-off: var(--color-border-subtle);
+  --color-meter-low: var(--color-status-success);
+  --color-meter-mid: var(--color-fx-dynamics);
+  --color-meter-high: var(--color-status-danger);
+
   /* Shadows */
   --shadow-pedal: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
   --shadow-knob: 0 2px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-knob-indicator: 0 0 4px rgba(245, 158, 11, 0.5);
   --shadow-glow-amber: 0 0 16px rgba(245, 158, 11, 0.35), 0 0 4px rgba(245, 158, 11, 0.2);
   --shadow-glow-cyan: 0 0 16px rgba(6, 182, 212, 0.35), 0 0 4px rgba(6, 182, 212, 0.2);
   --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --drop-shadow-knob-arc: 0 0 3px rgba(245, 158, 11, 0.4);
 
-  /* Fonts */
-  --font-sans: var(--font-pixel-body), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-mono), ui-monospace, monospace;
-  --font-pixel: var(--font-pixel), 'Press Start 2P', cursive;
+  /*
+   * Fonts. The --font-family-* variables are set on <html> by next/font (see layout.tsx).
+   * They are deliberately named differently from the theme variables below: a custom
+   * property that refers to itself is invalid, so sharing one name would leave the font
+   * to whichever declaration happens to win the cascade and drop the fallbacks.
+   */
+  --font-sans: var(--font-family-pixel-body), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-family-mono), ui-monospace, monospace;
+  /* Pixel heading font for titles and labels (`font-pixel` utility) */
+  --font-pixel: var(--font-family-pixel-heading), cursive;
 }
 
 body {
@@ -65,11 +79,6 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* Pixel heading font for titles and labels */
-.font-pixel {
-  font-family: var(--font-pixel);
 }
 
 /* Retro scanline overlay for panels */
@@ -151,4 +160,11 @@ body {
 @keyframes led-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
+}
+
+/* The LED stays lit, it just stops pulsing, for users who ask for less motion */
+@media (prefers-reduced-motion: reduce) {
+  .led-active {
+    animation: none;
+  }
 }
