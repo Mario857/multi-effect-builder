@@ -1,45 +1,29 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useAudioStore } from '@/lib/store/audioStore';
 
-export function useAudioInput() {
-  const {
-    availableDevices,
-    inputDeviceId,
-    setAvailableDevices,
-    setInputDeviceId,
-  } = useAudioStore();
+/** The available audio inputs and the current selection. */
+export interface AudioInputSelection {
+  /** Empty until the engine has started once — browsers hide devices before microphone access is granted. */
+  readonly audioInputDevices: readonly MediaDeviceInfo[];
+  readonly inputDeviceId: string;
+  readonly setInputDeviceId: (deviceId: string) => void;
+}
 
-  const enumerateDevices = useCallback(async () => {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const audioInputs = devices.filter((d) => d.kind === 'audioinput');
-    setAvailableDevices(audioInputs);
-
-    // Auto-select first device if none selected
-    if (!inputDeviceId && audioInputs.length > 0) {
-      setInputDeviceId(audioInputs[0].deviceId);
-    }
-  }, [inputDeviceId, setAvailableDevices, setInputDeviceId]);
-
-  // Listen for device changes (plugging/unplugging interfaces)
-  useEffect(() => {
-    const handleDeviceChange = () => {
-      enumerateDevices();
-    };
-
-    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
-    return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
-    };
-  }, [enumerateDevices]);
-
-  const audioInputDevices = availableDevices.filter((d) => d.kind === 'audioinput');
-
-  return {
-    audioInputDevices,
-    inputDeviceId,
-    setInputDeviceId,
-    enumerateDevices,
-  };
+/**
+ * Read-only view of the audio input devices for device pickers. Safe to call
+ * from any number of components: the device list is kept up to date by the
+ * engine controller (one `devicechange` listener for the whole app), and
+ * selecting a device makes the running engine switch to it.
+ * @returns The device list, the selected device id and its setter
+ */
+export function useAudioInput(): AudioInputSelection {
+  return useAudioStore(
+    useShallow((state) => ({
+      audioInputDevices: state.availableDevices,
+      inputDeviceId: state.inputDeviceId,
+      setInputDeviceId: state.setInputDeviceId,
+    })),
+  );
 }

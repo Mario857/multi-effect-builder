@@ -1,21 +1,25 @@
-import { EffectNode } from '@/lib/audio/effectNode';
+import type { EffectNode } from '@/lib/audio/effectNode';
 
 /**
- * Manages a chain of EffectNodes connected in series.
+ * Wires a list of EffectNodes in series.
  * Input → [Effect1] → [Effect2] → ... → Output
+ *
+ * The chain only owns the wiring: whoever creates the effect nodes is
+ * responsible for disposing them once they are no longer in the chain.
  */
 export class SignalChain {
-  private nodes: EffectNode[];
-  private inputNode: GainNode;
-  private outputNode: GainNode;
+  private readonly inputNode: GainNode;
+  private readonly outputNode: GainNode;
+  // Current wiring — maps every source node to the node it feeds
+  private links: Map<AudioNode, AudioNode>;
 
   constructor(context: AudioContext) {
-    this.nodes = [];
     this.inputNode = context.createGain();
     this.outputNode = context.createGain();
+    this.links = new Map();
 
     // Direct connection when chain is empty
-    this.inputNode.connect(this.outputNode);
+    this.setNodes([]);
   }
 
   get input(): GainNode {
@@ -26,79 +30,39 @@ export class SignalChain {
     return this.outputNode;
   }
 
-  get length(): number {
-    return this.nodes.length;
-  }
-
-  private reconnect(): void {
-    // Disconnect everything from input
-    this.inputNode.disconnect();
-
-    if (this.nodes.length === 0) {
-      this.inputNode.connect(this.outputNode);
-      return;
+  /**
+   * Makes the chain consist of exactly these nodes, in this order.
+   * Only links that differ from the current wiring are touched, so adding,
+   * removing or moving one effect leaves the rest of the chain (and any
+   * delay/reverb tails ringing inside it) connected and running.
+   * @param nodes - The effect nodes in signal-flow order
+   */
+  setNodes(nodes: readonly EffectNode[]): void {
+    const nextLinks = new Map<AudioNode, AudioNode>();
+    let source: AudioNode = this.inputNode;
+    for (const node of nodes) {
+      nextLinks.set(source, node.input);
+      source = node.output;
     }
+    nextLinks.set(source, this.outputNode);
 
-    // Connect: input → first node
-    this.inputNode.connect(this.nodes[0].input);
-
-    // Connect each node to the next
-    for (let i = 0; i < this.nodes.length - 1; i++) {
-      this.nodes[i].output.disconnect();
-      this.nodes[i].output.connect(this.nodes[i + 1].input);
+    // Every source feeds exactly one node, so a bare disconnect() removes just that link.
+    // (It also cannot throw if the node was already disposed, unlike disconnect(destination).)
+    for (const [from, to] of this.links) {
+      if (nextLinks.get(from) !== to) from.disconnect();
     }
-
-    // Connect: last node → output
-    const lastNode = this.nodes[this.nodes.length - 1];
-    lastNode.output.disconnect();
-    lastNode.output.connect(this.outputNode);
-  }
-
-  addNode(node: EffectNode): void {
-    this.nodes.push(node);
-    this.reconnect();
-  }
-
-  insertNode(node: EffectNode, index: number): void {
-    const clampedIndex = Math.min(Math.max(0, index), this.nodes.length);
-    this.nodes.splice(clampedIndex, 0, node);
-    this.reconnect();
-  }
-
-  removeNode(index: number): EffectNode | undefined {
-    if (index < 0 || index >= this.nodes.length) return undefined;
-    const removed = this.nodes.splice(index, 1)[0];
-    removed.output.disconnect();
-    this.reconnect();
-    return removed;
-  }
-
-  moveNode(fromIndex: number, toIndex: number): void {
-    if (fromIndex < 0 || fromIndex >= this.nodes.length) return;
-    if (toIndex < 0 || toIndex >= this.nodes.length) return;
-    if (fromIndex === toIndex) return;
-
-    const [node] = this.nodes.splice(fromIndex, 1);
-    this.nodes.splice(toIndex, 0, node);
-    this.reconnect();
-  }
-
-  getNode(index: number): EffectNode | undefined {
-    return this.nodes[index];
-  }
-
-  clear(): void {
-    for (const node of this.nodes) {
-      node.output.disconnect();
-      node.dispose();
+    for (const [from, to] of nextLinks) {
+      if (this.links.get(from) !== to) from.connect(to);
     }
-    this.nodes = [];
-    this.reconnect();
+    this.links = nextLinks;
   }
 
+  /** Disconnects the chain's own wiring. Does not dispose the effect nodes. */
   dispose(): void {
-    this.clear();
-    this.inputNode.disconnect();
+    for (const from of this.links.keys()) {
+      from.disconnect();
+    }
+    this.links.clear();
     this.outputNode.disconnect();
   }
 }

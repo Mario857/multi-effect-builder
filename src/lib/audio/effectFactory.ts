@@ -1,7 +1,7 @@
-import type { AmpType, EffectType, EffectParameterValue, PedalEffectType } from '@/types/audio';
+import type { AmpType, EffectType, PedalEffectType } from '@/types/audio';
 import { EFFECT_TYPE } from '@/types/audio';
-import { AMP_TYPES, EFFECT_DEFINITIONS } from '@/lib/constants/effects';
-import { EffectNode } from '@/lib/audio/effectNode';
+import { AMP_TYPES } from '@/lib/constants/effects';
+import type { EffectNode } from '@/lib/audio/effectNode';
 import { DistortionEffect } from '@/lib/audio/effects/distortion';
 import { DelayEffect } from '@/lib/audio/effects/delay';
 import { ReverbEffect } from '@/lib/audio/effects/reverb';
@@ -35,6 +35,14 @@ export function isAmpType(type: EffectType): type is AmpType {
   return AMP_TYPES_SET.has(type);
 }
 
+/**
+ * Creates the audio node for an effect or amp type.
+ * The AudioWorklet modules and cab IRs must already be loaded on the context
+ * (done by AudioEngine.start()) — amp nodes are built on top of them.
+ * @param context - The running engine's context
+ * @param type - The effect or amp type to instantiate
+ * @returns A new node with default parameters, not yet connected
+ */
 export function createEffectNode(context: AudioContext, type: EffectType): EffectNode {
   if (isAmpType(type)) {
     return AmpSimulatorEffect.create(context, type);
@@ -42,14 +50,4 @@ export function createEffectNode(context: AudioContext, type: EffectType): Effec
 
   const Constructor = EFFECT_REGISTRY[type];
   return new Constructor(context);
-}
-
-export function getDefaultParameters(type: EffectType): readonly EffectParameterValue[] {
-  const definition = EFFECT_DEFINITIONS[type];
-  if (!definition) return [];
-
-  return definition.parameters.map((param) => ({
-    id: param.id,
-    value: param.defaultValue,
-  }));
 }

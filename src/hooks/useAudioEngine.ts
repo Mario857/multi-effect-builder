@@ -1,132 +1,52 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useMemo } from 'react';
-import { AudioEngine } from '@/lib/audio/engine';
-import { createEffectNode } from '@/lib/audio/effectFactory';
+import { useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { startAudioEngine, stopAudioEngine } from '@/lib/audio/engineController';
 import { useAudioStore } from '@/lib/store/audioStore';
-import { usePedalboardStore } from '@/lib/store/pedalboardStore';
-import { METER_UPDATE_INTERVAL_MS } from '@/lib/constants/audio';
-import type { EffectNode } from '@/lib/audio/effectNode';
 
-export function useAudioEngine() {
-  const engineRef = useRef<AudioEngine | null>(null);
-  const ampNodeRef = useRef<EffectNode | null>(null);
-  const effectNodesRef = useRef<EffectNode[]>([]);
+/** Engine status flags and the handlers that drive the engine's lifecycle. */
+export interface AudioEngineControls {
+  readonly isEngineRunning: boolean;
+  /** True from the start request until the engine runs or the start has failed. */
+  readonly isEngineStarting: boolean;
+  /** Message of the last failed start or input switch, null when there is none. */
+  readonly engineError: string | null;
+  /** Never rejects — failures are reported through `engineError`. No-op while starting or running. */
+  readonly startEngine: () => Promise<void>;
+  /** Releases the microphone and closes the AudioContext. No-op when not running. */
+  readonly stopEngine: () => Promise<void>;
+}
 
-  const {
-    isEngineRunning,
-    masterVolume,
-    inputDeviceId,
-    setEngineRunning,
-    setInputLevel,
-    setOutputLevel,
-  } = useAudioStore();
-
-  const { ampType, ampParameters, effects } = usePedalboardStore();
-
-  // Structural fingerprint — changes only when effects are added/removed/reordered/toggled
-  const effectStructureKey = useMemo(
-    () => effects.map(e => `${e.id}:${e.type}:${e.isBypassed}`).join('|'),
-    [effects],
+/**
+ * Binds the audio engine's lifecycle to the component that calls it: exposes
+ * start/stop and the engine status, and stops the engine when that component
+ * unmounts. Call it once, from the page-level hook.
+ *
+ * The engine itself and its synchronisation with the stores live outside React
+ * (see engineController), so this hook only re-renders on status changes.
+ * @returns Status flags and start/stop handlers
+ */
+export function useAudioEngine(): AudioEngineControls {
+  const status = useAudioStore(
+    useShallow((state) => ({
+      isEngineRunning: state.isEngineRunning,
+      isEngineStarting: state.isEngineStarting,
+      engineError: state.engineError,
+    })),
   );
 
-  const startEngine = useCallback(async () => {
-    if (engineRef.current?.isRunning) return;
-
-    const engine = new AudioEngine();
-    engineRef.current = engine;
-    await engine.start();
-    setEngineRunning(true);
-  }, [setEngineRunning]);
-
-  const stopEngine = useCallback(async () => {
-    if (!engineRef.current) return;
-    await engineRef.current.stop();
-    engineRef.current = null;
-    ampNodeRef.current = null;
-    effectNodesRef.current = [];
-    setEngineRunning(false);
-  }, [setEngineRunning]);
-
-  const connectInput = useCallback(async (deviceId?: string) => {
-    if (!engineRef.current) return;
-    await engineRef.current.connectInput(deviceId);
+  // Without this the AudioContext and the microphone would stay live after the
+  // page unmounts (navigation, hot reload)
+  useEffect(() => {
+    return () => {
+      void stopAudioEngine();
+    };
   }, []);
 
-  // Sync master volume
-  useEffect(() => {
-    engineRef.current?.setMasterVolume(masterVolume);
-  }, [masterVolume]);
-
-  // Sync input device
-  useEffect(() => {
-    if (!isEngineRunning || !inputDeviceId) return;
-    engineRef.current?.connectInput(inputDeviceId);
-  }, [inputDeviceId, isEngineRunning]);
-
-  // Create amp node — only when amp type changes or engine starts
-  useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine?.isRunning || !engine.audioContext || !engine.ampSignalChain) return;
-
-    engine.ampSignalChain.clear();
-    const ampNode = createEffectNode(engine.audioContext, ampType);
-    const params = usePedalboardStore.getState().ampParameters;
-    ampNode.setParameters(params);
-    engine.ampSignalChain.addNode(ampNode);
-    ampNodeRef.current = ampNode;
-  }, [ampType, isEngineRunning]);
-
-  // Update amp parameters in-place — no node recreation
-  useEffect(() => {
-    ampNodeRef.current?.setParameters(ampParameters);
-  }, [ampParameters]);
-
-  // Create effect nodes — only when structure changes or engine starts
-  useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine?.isRunning || !engine.audioContext || !engine.effectSignalChain) return;
-
-    const currentEffects = usePedalboardStore.getState().effects;
-    engine.effectSignalChain.clear();
-    const nodes: EffectNode[] = [];
-    for (const effect of currentEffects) {
-      const node = createEffectNode(engine.audioContext, effect.type);
-      node.isBypassed = effect.isBypassed;
-      node.setParameters(effect.parameters);
-      engine.effectSignalChain.addNode(node);
-      nodes.push(node);
-    }
-    effectNodesRef.current = nodes;
-  }, [effectStructureKey, isEngineRunning]);
-
-  // Update effect parameters in-place — no node recreation
-  useEffect(() => {
-    const nodes = effectNodesRef.current;
-    if (nodes.length !== effects.length) return;
-    for (let i = 0; i < effects.length; i++) {
-      nodes[i].setParameters(effects[i].parameters);
-    }
-  }, [effects]);
-
-  // Metering update loop
-  useEffect(() => {
-    if (!isEngineRunning) return;
-
-    const interval = setInterval(() => {
-      if (!engineRef.current) return;
-      setInputLevel(engineRef.current.getInputLevel());
-      setOutputLevel(engineRef.current.getOutputLevel());
-    }, METER_UPDATE_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [isEngineRunning, setInputLevel, setOutputLevel]);
-
   return {
-    isEngineRunning,
-    startEngine,
-    stopEngine,
-    connectInput,
-    engine: engineRef,
+    ...status,
+    startEngine: startAudioEngine,
+    stopEngine: stopAudioEngine,
   };
 }

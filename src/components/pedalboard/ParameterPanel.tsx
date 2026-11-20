@@ -8,12 +8,11 @@ import { Button } from '@/components/shared/Button';
 import { EFFECT_DEFINITIONS } from '@/lib/constants/effects';
 import { CATEGORY_COLORS, CATEGORY_BG_COLORS } from '@/lib/constants/ui';
 import { usePedalboardStore } from '@/lib/store/pedalboardStore';
-import { getDefaultParameters } from '@/lib/audio/effectFactory';
 
 const KNOB_THRESHOLD = 6;
 
 export function ParameterPanel() {
-  const { effects, selectedEffectId, setEffectParameter } = usePedalboardStore();
+  const { effects, selectedEffectId, setEffectParameter, resetEffectParameters } = usePedalboardStore();
 
   const selectedEffect = effects.find((e) => e.id === selectedEffectId);
   if (!selectedEffect) return null;
@@ -26,10 +25,7 @@ export function ParameterPanel() {
   const parameterValues = new Map(selectedEffect.parameters.map((p) => [p.id, p.value]));
 
   const handleReset = () => {
-    const defaults = getDefaultParameters(selectedEffect.type);
-    for (const param of defaults) {
-      setEffectParameter(selectedEffect.id, param.id, param.value);
-    }
+    resetEffectParameters(selectedEffect.id);
   };
 
   // Use knobs for fewer params, sliders for many

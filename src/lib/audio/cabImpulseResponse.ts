@@ -1,8 +1,9 @@
-import type { EffectType } from '@/types/audio';
+import type { AmpType, EffectType } from '@/types/audio';
 import { EFFECT_TYPE } from '@/types/audio';
+import { AMP_TYPES } from '@/lib/constants/effects';
 
 // Cab IR file paths — MIT-licensed from WebAudio-Guitar-Amplifier-Simulator-3
-const CAB_IR_PATHS: Record<string, string> = {
+const CAB_IR_PATHS: Record<AmpType, string> = {
   [EFFECT_TYPE.AMP_CLEAN]: '/ir/fender-clean.wav',
   [EFFECT_TYPE.AMP_CRUNCH]: '/ir/marshall-crunch.wav',
   [EFFECT_TYPE.AMP_HIGHGAIN]: '/ir/marshall-highgain.wav',
@@ -10,51 +11,39 @@ const CAB_IR_PATHS: Record<string, string> = {
 };
 
 // Cache decoded IR buffers — same IR can be reused across amp instances
-const irCache = new Map<string, AudioBuffer>();
+const irCache = new Map<EffectType, AudioBuffer>();
 
-/**
- * Loads and decodes a cabinet impulse response WAV file.
- * Results are cached so repeated loads of the same IR are instant.
- */
-export async function loadCabIR(
-  context: AudioContext,
-  ampType: EffectType,
-): Promise<AudioBuffer | null> {
-  const path = CAB_IR_PATHS[ampType];
-  if (!path) return null;
-
-  // Return cached buffer if available
-  const cached = irCache.get(path);
-  if (cached) return cached;
-
-  try {
-    const response = await fetch(path);
-    if (!response.ok) return null;
-
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await context.decodeAudioData(arrayBuffer);
-    irCache.set(path, audioBuffer);
-    return audioBuffer;
-  } catch {
-    return null;
-  }
-}
+// Sample rate the cached buffers were decoded at. decodeAudioData resamples to the
+// decoding context's rate and a ConvolverNode throws on a buffer at any other rate,
+// so the cache is only valid for contexts running at this rate.
+let irCacheSampleRate: number | null = null;
 
 /**
  * Preloads all cabinet IRs into the cache.
  * Call once during engine startup so IR assignment is synchronous later.
+ * Buffers decoded by an earlier engine run are reused when the sample rate still
+ * matches and discarded when it does not (e.g. the output device changed).
+ * @param context - The context the IRs will be used in
  */
-export async function preloadAllCabIRs(context: AudioContext): Promise<void> {
-  const loads = Object.values(CAB_IR_PATHS).map(async (path) => {
-    if (irCache.has(path)) return;
+export async function preloadAllCabIRs(context: BaseAudioContext): Promise<void> {
+  if (irCacheSampleRate !== context.sampleRate) {
+    irCache.clear();
+    irCacheSampleRate = context.sampleRate;
+  }
+
+  const loads = AMP_TYPES.map(async (ampType) => {
+    if (irCache.has(ampType)) return;
 
     try {
-      const response = await fetch(path);
+      const response = await fetch(CAB_IR_PATHS[ampType]);
       if (!response.ok) return;
 
       const arrayBuffer = await response.arrayBuffer();
       const audioBuffer = await context.decodeAudioData(arrayBuffer);
-      irCache.set(path, audioBuffer);
+      // A restart at another sample rate may have retargeted the cache while this was loading
+      if (audioBuffer.sampleRate === irCacheSampleRate) {
+        irCache.set(ampType, audioBuffer);
+      }
     } catch {
       // Silent fail — filter chain fallback will be used
     }
@@ -64,10 +53,9 @@ export async function preloadAllCabIRs(context: AudioContext): Promise<void> {
 }
 
 /**
- * Gets a cached cab IR buffer synchronously. Returns null if not loaded.
+ * Gets a cached cab IR buffer synchronously. Returns null if not loaded
+ * (or when the type is not an amp model — pedals have no cabinet).
  */
 export function getCachedCabIR(ampType: EffectType): AudioBuffer | null {
-  const path = CAB_IR_PATHS[ampType];
-  if (!path) return null;
-  return irCache.get(path) ?? null;
+  return irCache.get(ampType) ?? null;
 }

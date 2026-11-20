@@ -1,11 +1,25 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { EffectInstance, EffectParameterValue, EffectType, Preset } from '@/types/audio';
-import { getDefaultParameters } from '@/lib/audio/effectFactory';
+import type {
+  AmpType,
+  EffectInstance,
+  EffectParameterValue,
+  PedalEffectType,
+  PersistedPedalboard,
+  Preset,
+} from '@/types/audio';
 import { FACTORY_PRESETS } from '@/lib/constants/presets';
+import {
+  PEDALBOARD_STORAGE_KEY,
+  PEDALBOARD_STORAGE_VERSION,
+  STORAGE_WRITE_THROTTLE_MS,
+} from '@/lib/constants/storage';
+import { createThrottledStorage } from '@/lib/helpers/createThrottledStorage';
+import { getDefaultParameters } from '@/lib/helpers/getDefaultParameters';
+import { sanitizePersistedPedalboard } from '@/lib/helpers/sanitizePedalboard';
 
 interface PedalboardState {
-  ampType: EffectType;
+  ampType: AmpType;
   ampParameters: readonly EffectParameterValue[];
   effects: readonly EffectInstance[];
   selectedEffectId: string | null;
@@ -14,13 +28,14 @@ interface PedalboardState {
 }
 
 interface PedalboardActions {
-  setAmpType: (type: EffectType) => void;
+  setAmpType: (type: AmpType) => void;
   setAmpParameter: (id: string, value: number) => void;
-  addEffect: (type: EffectType) => void;
+  addEffect: (type: PedalEffectType) => void;
   removeEffect: (id: string) => void;
   moveEffect: (fromIndex: number, toIndex: number) => void;
   toggleBypass: (id: string) => void;
   setEffectParameter: (effectId: string, parameterId: string, value: number) => void;
+  resetEffectParameters: (effectId: string) => void;
   selectEffect: (id: string | null) => void;
   savePreset: (name: string) => void;
   loadPreset: (id: string) => void;
@@ -28,12 +43,17 @@ interface PedalboardActions {
   resetToDefaults: () => void;
 }
 
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
 const DEFAULT_PRESET = FACTORY_PRESETS[0];
 
+/**
+ * The pedalboard: active amp, ordered effect chain, selection and presets.
+ * This is the single source of truth for the sound — the audio graph is derived
+ * from it by the engine controller. All updates are immutable, which is what
+ * lets the audio layer find changes by comparing references.
+ *
+ * The board, the user presets and the active preset id are persisted to
+ * localStorage (throttled, validated on load).
+ */
 export const usePedalboardStore = create<PedalboardState & PedalboardActions>()(
   persist(
     (set, get) => ({
@@ -44,11 +64,14 @@ export const usePedalboardStore = create<PedalboardState & PedalboardActions>()(
       presets: FACTORY_PRESETS,
       activePresetId: DEFAULT_PRESET.id,
 
-      setAmpType: (type) =>
+      setAmpType: (type) => {
+        // Re-selecting the active amp must not wipe its knob settings
+        if (type === get().ampType) return;
         set({
           ampType: type,
           ampParameters: getDefaultParameters(type),
-        }),
+        });
+      },
 
       setAmpParameter: (id, value) =>
         set((state) => ({
@@ -59,7 +82,7 @@ export const usePedalboardStore = create<PedalboardState & PedalboardActions>()(
 
       addEffect: (type) => {
         const newEffect: EffectInstance = {
-          id: generateId(),
+          id: crypto.randomUUID(),
           type,
           isBypassed: false,
           parameters: getDefaultParameters(type),
@@ -78,6 +101,11 @@ export const usePedalboardStore = create<PedalboardState & PedalboardActions>()(
 
       moveEffect: (fromIndex, toIndex) =>
         set((state) => {
+          const isOnBoard = (index: number) =>
+            Number.isInteger(index) && index >= 0 && index < state.effects.length;
+          // Returning the same state object makes this a no-op (no notification, no persist churn)
+          if (!isOnBoard(fromIndex) || !isOnBoard(toIndex) || fromIndex === toIndex) return state;
+
           const newEffects = [...state.effects];
           const [moved] = newEffects.splice(fromIndex, 1);
           newEffects.splice(toIndex, 0, moved);
@@ -105,16 +133,28 @@ export const usePedalboardStore = create<PedalboardState & PedalboardActions>()(
           ),
         })),
 
-      selectEffect: (id) => set({ selectedEffectId: id }),
+      resetEffectParameters: (effectId) =>
+        set((state) => ({
+          effects: state.effects.map((e) =>
+            e.id === effectId ? { ...e, parameters: getDefaultParameters(e.type) } : e,
+          ),
+        })),
+
+      selectEffect: (id) => {
+        // A click that removes a pedal can still bubble into a select for the same id —
+        // never point the selection at an effect that is not on the board
+        if (id !== null && !get().effects.some((e) => e.id === id)) return;
+        set({ selectedEffectId: id });
+      },
 
       savePreset: (name) => {
         const state = get();
         const preset: Preset = {
-          id: generateId(),
+          id: crypto.randomUUID(),
           name,
           isFactory: false,
           pedalboard: {
-            id: generateId(),
+            id: crypto.randomUUID(),
             name,
             ampType: state.ampType,
             ampParameters: state.ampParameters,
@@ -142,7 +182,8 @@ export const usePedalboardStore = create<PedalboardState & PedalboardActions>()(
 
       deletePreset: (id) =>
         set((state) => ({
-          presets: state.presets.filter((p) => p.id !== id),
+          // Factory presets are permanent, whatever the caller asks for
+          presets: state.presets.filter((p) => p.id !== id || p.isFactory),
           activePresetId: state.activePresetId === id ? null : state.activePresetId,
         })),
 
@@ -156,21 +197,38 @@ export const usePedalboardStore = create<PedalboardState & PedalboardActions>()(
         }),
     }),
     {
-      name: 'multi-effect-pedalboard',
-      merge: (persisted, current) => {
-        const persistedState = persisted as Partial<PedalboardState & PedalboardActions> | undefined;
-        if (!persistedState) return current;
+      name: PEDALBOARD_STORAGE_KEY,
+      version: PEDALBOARD_STORAGE_VERSION,
+      storage: createThrottledStorage(STORAGE_WRITE_THROTTLE_MS),
 
-        // Ensure factory presets are always present
-        const persistedPresets = persistedState.presets ?? [];
-        const factoryIds = new Set(FACTORY_PRESETS.map((p) => p.id));
-        const userPresets = persistedPresets.filter((p) => !factoryIds.has(p.id));
-        const mergedPresets = [...FACTORY_PRESETS, ...userPresets];
+      // Persist only what must survive a reload. Factory presets are constants and the
+      // selection is transient UI state — writing them on every knob move is wasted work.
+      partialize: (state): PersistedPedalboard => ({
+        ampType: state.ampType,
+        ampParameters: state.ampParameters,
+        effects: state.effects,
+        presets: state.presets.filter((p) => !p.isFactory),
+        activePresetId: state.activePresetId,
+      }),
+
+      // Version 0 data is a superset of the current shape and `merge` validates every
+      // field anyway, so older data needs no transformation — it only must not be discarded.
+      migrate: (persisted) => persisted,
+
+      merge: (persisted, current) => {
+        const restored = sanitizePersistedPedalboard(persisted, {
+          ampType: current.ampType,
+          ampParameters: current.ampParameters,
+          effects: current.effects,
+          presets: [],
+          activePresetId: current.activePresetId,
+        });
 
         return {
           ...current,
-          ...persistedState,
-          presets: mergedPresets,
+          ...restored,
+          // Ensure factory presets are always present
+          presets: [...FACTORY_PRESETS, ...restored.presets],
         };
       },
     },

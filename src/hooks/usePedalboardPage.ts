@@ -2,26 +2,33 @@
 
 import { useState, useCallback } from 'react';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
-import { useAudioInput } from '@/hooks/useAudioInput';
-import { useTuner } from '@/hooks/useTuner';
 import { useAudioStore } from '@/lib/store/audioStore';
 
-export function usePedalboardPage() {
+/** Everything the pedalboard page needs to compose its components. */
+export interface PedalboardPageState {
+  readonly isEngineRunning: boolean;
+  /** True while the engine is loading or waiting for microphone permission. */
+  readonly isEngineStarting: boolean;
+  /** Message of the last failed start or input switch, null when there is none. */
+  readonly engineError: string | null;
+  readonly isTunerActive: boolean;
+  readonly isEffectRackOpen: boolean;
+  readonly handleStartEngine: () => Promise<void>;
+  readonly handleStopEngine: () => Promise<void>;
+  readonly openEffectRack: () => void;
+  readonly closeEffectRack: () => void;
+}
+
+/**
+ * Page-level hook of the pedalboard page: owns the audio engine's lifecycle and
+ * the page's local UI state.
+ * @returns Status flags and handlers for the page to pass to its components
+ */
+export function usePedalboardPage(): PedalboardPageState {
   const [isEffectRackOpen, setIsEffectRackOpen] = useState(false);
 
-  const { isEngineRunning, startEngine, connectInput, engine } = useAudioEngine();
-  const { enumerateDevices } = useAudioInput();
-  const { isTunerActive } = useAudioStore();
-
-  const analyser = engine.current?.getInputAnalyser() ?? null;
-  const { reading: tunerReading } = useTuner(analyser);
-
-  const handleStartEngine = useCallback(async () => {
-    await startEngine();
-    // getUserMedia must be called before enumerating so browsers expose device labels
-    await connectInput();
-    await enumerateDevices();
-  }, [startEngine, connectInput, enumerateDevices]);
+  const { isEngineRunning, isEngineStarting, engineError, startEngine, stopEngine } = useAudioEngine();
+  const isTunerActive = useAudioStore((state) => state.isTunerActive);
 
   const openEffectRack = useCallback(() => {
     setIsEffectRackOpen(true);
@@ -33,10 +40,12 @@ export function usePedalboardPage() {
 
   return {
     isEngineRunning,
+    isEngineStarting,
+    engineError,
     isTunerActive,
     isEffectRackOpen,
-    tunerReading,
-    handleStartEngine,
+    handleStartEngine: startEngine,
+    handleStopEngine: stopEngine,
     openEffectRack,
     closeEffectRack,
   };
