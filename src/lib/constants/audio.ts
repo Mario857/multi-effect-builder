@@ -43,9 +43,6 @@ export const GUITAR_STANDARD_TUNING = [
 // DC blocking highpass filter cutoff — removes DC offset from waveshaper stages
 export const DC_BLOCK_FREQUENCY = 20;
 
-// Path to the tube preamp AudioWorklet processor module
-export const TUBE_PREAMP_WORKLET_PATH = '/worklets/tube-preamp-processor.js';
-
 // Guitar input bandpass — cuts noise outside useful guitar range
 export const GUITAR_LOWCUT_FREQUENCY = 70;
 export const GUITAR_HIGHCUT_FREQUENCY = 7000;

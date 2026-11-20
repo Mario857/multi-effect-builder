@@ -1,6 +1,7 @@
 import { SignalChain } from '@/lib/audio/signalChain';
 import { preloadAllCabIRs } from '@/lib/audio/cabImpulseResponse';
-import { FFT_SIZE, SMOOTHING_TIME_CONSTANT, TUBE_PREAMP_WORKLET_PATH } from '@/lib/constants/audio';
+import { WORKLET_MODULE_PATHS } from '@/lib/audio/worklets/workletModules';
+import { FFT_SIZE, SMOOTHING_TIME_CONSTANT } from '@/lib/constants/audio';
 
 /**
  * Core audio engine managing Web Audio API context, input stream,
@@ -54,8 +55,9 @@ export class AudioEngine {
 
     // Register AudioWorklet modules and preload cabinet IRs in parallel
     // Both must complete before creating any amp nodes
+    const { audioWorklet } = this.context;
     await Promise.all([
-      this.context.audioWorklet.addModule(TUBE_PREAMP_WORKLET_PATH),
+      ...WORKLET_MODULE_PATHS.map((path) => audioWorklet.addModule(path)),
       preloadAllCabIRs(this.context),
     ]);
 
