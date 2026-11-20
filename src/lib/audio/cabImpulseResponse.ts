@@ -1,4 +1,4 @@
-import type { AmpType, EffectType } from '@/types/audio';
+import type { AmpType } from '@/types/audio';
 import { EFFECT_TYPE } from '@/types/audio';
 import { AMP_TYPES } from '@/lib/constants/effects';
 
@@ -11,7 +11,7 @@ const CAB_IR_PATHS: Record<AmpType, string> = {
 };
 
 // Cache decoded IR buffers — same IR can be reused across amp instances
-const irCache = new Map<EffectType, AudioBuffer>();
+const irCache = new Map<AmpType, AudioBuffer>();
 
 // Sample rate the cached buffers were decoded at. decodeAudioData resamples to the
 // decoding context's rate and a ConvolverNode throws on a buffer at any other rate,
@@ -53,9 +53,8 @@ export async function preloadAllCabIRs(context: BaseAudioContext): Promise<void>
 }
 
 /**
- * Gets a cached cab IR buffer synchronously. Returns null if not loaded
- * (or when the type is not an amp model — pedals have no cabinet).
+ * Gets a cached cab IR buffer synchronously. Returns null if not loaded.
  */
-export function getCachedCabIR(ampType: EffectType): AudioBuffer | null {
+export function getCachedCabIR(ampType: AmpType): AudioBuffer | null {
   return irCache.get(ampType) ?? null;
 }
